@@ -28,6 +28,14 @@
     },
     {
       "matches": [
+        "*://*.atlassian.net/*"
+      ],
+      "js": [
+        "./content_scripts/jira.js"
+      ]
+    },
+    {
+      "matches": [
         "<all_urls>"
       ],
       "js": [

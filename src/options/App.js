@@ -12,6 +12,7 @@ const App = () => {
     { name: "api", text: "API Token" },
     { name: "sync", text: "Sync" },
     { name: "gmail", text: "Gmail Addon" },
+    { name: "jira", text: "Jira Addon" },
   ];
 
   return (
