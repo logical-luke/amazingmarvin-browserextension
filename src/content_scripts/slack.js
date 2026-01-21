@@ -336,8 +336,8 @@ function createMarvinButton(metadata) {
   // Use Slack's native button classes for consistent styling
   button.className = "c-button-unstyled c-icon_button c-icon_button--size_small c-message_actions__button c-icon_button--default marvinButton";
   button.setAttribute("aria-label", "Add to Marvin");
+  button.setAttribute("title", "Add to Marvin");
   button.setAttribute("data-qa", "add_to_marvin");
-  button.setAttribute("data-sk", "tooltip_parent");
   button.setAttribute("type", "button");
 
   // Create img element with Marvin logo, sized to match Slack's icons
