@@ -646,6 +646,8 @@ let displayInBoardView = true;
 let displayInListView = true;
 let isInitialized = false;
 let observer = null;
+let lastUrl = '';
+let retryTimeout = null;
 
 /**
  * Determines current view type and adds appropriate buttons
@@ -683,31 +685,165 @@ function addButtonsToCurrentView() {
 }
 
 /**
- * Debounce function to limit frequent calls
+ * Throttle function - ensures function is called at most once per wait period
  */
-function debounce(func, wait) {
-  let timeout;
+function throttle(func, wait) {
+  let lastTime = 0;
+  let timeout = null;
   return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
+    const now = Date.now();
+    const remaining = wait - (now - lastTime);
+
+    if (remaining <= 0) {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+      lastTime = now;
       func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
+    } else if (!timeout) {
+      timeout = setTimeout(() => {
+        lastTime = Date.now();
+        timeout = null;
+        func(...args);
+      }, remaining);
+    }
   };
 }
 
-const debouncedAddButtons = debounce(addButtonsToCurrentView, 300);
+const throttledAddButtons = throttle(addButtonsToCurrentView, 200);
 
 /**
- * Handles DOM mutations
+ * Check if we need to add buttons for side panel or new cards
+ * This is called when specific elements are detected
+ */
+function checkForNewContent() {
+  const url = window.location.href;
+
+  // Check if side panel should have a button
+  if (url.includes('selectedIssue=') && displayInIssueView) {
+    const breadcrumb = document.querySelector(SELECTORS.breadcrumbNav);
+    const issueKey = getIssueKeyFromUrl();
+    if (breadcrumb && issueKey && !marvinButtonExists(document.body, issueKey)) {
+      addButtonToIssueView();
+    }
+  }
+
+  // Check for new board cards without buttons
+  if ((url.includes('/board') || url.includes('/boards/')) && displayInBoardView) {
+    const cards = document.querySelectorAll(SELECTORS.boardCard);
+    cards.forEach(card => {
+      const metadata = getJiraMetadata(card);
+      if (metadata && !marvinButtonExists(card, metadata.issueKey)) {
+        // Card needs a button - trigger full check
+        throttledAddButtons();
+      }
+    });
+  }
+}
+
+/**
+ * Handles DOM mutations - watches for specific elements
  */
 function handleMutation(mutationsList) {
+  let shouldCheck = false;
+
   for (const mutation of mutationsList) {
-    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-      debouncedAddButtons();
-      break; // Only need to trigger once per batch
+    if (mutation.type !== 'childList' || mutation.addedNodes.length === 0) continue;
+
+    for (const node of mutation.addedNodes) {
+      if (node.nodeType !== Node.ELEMENT_NODE) continue;
+
+      // Check if this is a breadcrumb nav (side panel loaded)
+      if (node.matches?.(SELECTORS.breadcrumbNav) ||
+          node.querySelector?.(SELECTORS.breadcrumbNav)) {
+        shouldCheck = true;
+        break;
+      }
+
+      // Check if this is a board card
+      if (node.matches?.(SELECTORS.boardCard) ||
+          node.querySelector?.(SELECTORS.boardCard)) {
+        shouldCheck = true;
+        break;
+      }
+
+      // Check if this contains issue-related content
+      if (node.querySelector?.('[data-testid*="issue"]') ||
+          node.querySelector?.('[data-testid*="breadcrumb"]')) {
+        shouldCheck = true;
+        break;
+      }
     }
+
+    if (shouldCheck) break;
+  }
+
+  if (shouldCheck) {
+    // Small delay to let content fully render
+    setTimeout(checkForNewContent, 100);
+  }
+}
+
+/**
+ * Watch for URL changes (SPA navigation)
+ */
+function setupUrlWatcher() {
+  // Override pushState and replaceState to detect SPA navigation
+  const originalPushState = history.pushState;
+  const originalReplaceState = history.replaceState;
+
+  history.pushState = function(...args) {
+    originalPushState.apply(this, args);
+    handleUrlChange();
+  };
+
+  history.replaceState = function(...args) {
+    originalReplaceState.apply(this, args);
+    handleUrlChange();
+  };
+
+  // Also listen for popstate (back/forward navigation)
+  window.addEventListener('popstate', handleUrlChange);
+}
+
+/**
+ * Handle URL changes
+ */
+function handleUrlChange() {
+  const currentUrl = window.location.href;
+  if (currentUrl === lastUrl) return;
+
+  lastUrl = currentUrl;
+
+  // Clear any pending retry
+  if (retryTimeout) {
+    clearTimeout(retryTimeout);
+    retryTimeout = null;
+  }
+
+  // Try to add buttons immediately
+  addButtonsToCurrentView();
+
+  // If URL has selectedIssue, retry a few times as content loads
+  if (currentUrl.includes('selectedIssue=')) {
+    let retryCount = 0;
+    const maxRetries = 10;
+
+    const retryAddButton = () => {
+      retryCount++;
+      const issueKey = getIssueKeyFromUrl();
+
+      if (issueKey && !marvinButtonExists(document.body, issueKey)) {
+        const added = addButtonToIssueView();
+
+        if (!added && retryCount < maxRetries) {
+          retryTimeout = setTimeout(retryAddButton, 300);
+        }
+      }
+    };
+
+    retryTimeout = setTimeout(retryAddButton, 300);
   }
 }
 
@@ -743,27 +879,29 @@ async function init() {
     return; // Wait for Jira to load
   }
 
+  // Track current URL
+  lastUrl = window.location.href;
+
   // Add buttons to current view
   addButtonsToCurrentView();
 
   if (!isInitialized) {
     isInitialized = true;
 
-    // Set up MutationObserver for SPA navigation
+    // Set up URL watcher for SPA navigation (pushState/replaceState)
+    setupUrlWatcher();
+
+    // Set up MutationObserver for dynamic content
     observer = new MutationObserver(handleMutation);
     observer.observe(document.body, {
       childList: true,
       subtree: true,
     });
 
-    // Also listen for URL changes (popstate for back/forward navigation)
-    window.addEventListener('popstate', debouncedAddButtons);
-
-    // Listen for hashchange as well
-    window.addEventListener('hashchange', debouncedAddButtons);
-
     // Stop the initial interval
     clearInterval(loopInterval);
+
+    console.log('Marvin Jira integration initialized');
   }
 }
 
