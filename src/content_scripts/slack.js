@@ -2,8 +2,6 @@ import { getStoredSlackSettings, getStoredToken } from "../utils/storage";
 import { addTask } from "../utils/api";
 import { formatDate } from "../utils/dates";
 
-const logo = chrome.runtime.getURL("static/logo.png");
-
 // Slack-specific selectors (Slack's DOM changes frequently, multiple fallbacks)
 const SELECTORS = {
   // Virtual list containers
@@ -328,38 +326,25 @@ async function handleMarvinButtonClick(metadata) {
 }
 
 /**
- * Creates a Marvin button for Slack messages
+ * Creates a Marvin button for Slack messages matching Slack's native button design
  */
 function createMarvinButton(metadata) {
   const button = document.createElement("button");
-  button.classList.add("marvinButton");
+
+  // Use Slack's native button classes for consistent styling
+  button.className = "c-button-unstyled c-icon_button c-icon_button--size_small c-message_actions__button c-icon_button--default marvinButton";
   button.setAttribute("aria-label", "Add to Marvin");
-  button.setAttribute("title", "Add to Marvin");
+  button.setAttribute("data-qa", "add_to_marvin");
+  button.setAttribute("data-sk", "tooltip_parent");
   button.setAttribute("type", "button");
 
-  // Style to match Slack's action buttons
-  button.style.cssText = `
-    background: url(${logo}) no-repeat center center;
-    background-size: 16px 16px;
-    width: 28px;
-    height: 28px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    opacity: 0.7;
-    transition: opacity 0.2s, background-color 0.1s;
-    flex-shrink: 0;
-    margin: 0 2px;
+  // Create SVG icon matching Slack's style (checkmark/task icon)
+  // Using Slack's viewBox="0 0 20 20" standard
+  button.innerHTML = `
+    <svg data-qa="marvin-icon" aria-hidden="true" viewBox="0 0 20 20" class="">
+      <path fill="currentColor" fill-rule="evenodd" d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16m3.78 5.97a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0l-2.25-2.25a.75.75 0 1 1 1.06-1.06l1.72 1.72 3.72-3.72a.75.75 0 0 1 1.06 0" clip-rule="evenodd"></path>
+    </svg>
   `;
-
-  button.onmouseenter = () => {
-    button.style.opacity = "1";
-    button.style.backgroundColor = "rgba(29, 28, 29, 0.04)";
-  };
-  button.onmouseleave = () => {
-    button.style.opacity = "0.7";
-    button.style.backgroundColor = "transparent";
-  };
 
   button.onclick = (e) => {
     e.preventDefault();
@@ -384,7 +369,7 @@ function marvinButtonExists(container) {
 }
 
 /**
- * Adds Marvin button to a message element
+ * Adds Marvin button to a message's actions toolbar
  */
 function addButtonToMessage(messageElement) {
   // Skip if button already exists
@@ -402,67 +387,34 @@ function addButtonToMessage(messageElement) {
   if (isDM && !showInDMs) return;
   if (!isThread && !isDM && !showInChannels) return;
 
+  // Only add to message actions toolbar (Slack's hover menu)
+  const actionsContainer = messageElement.querySelector(SELECTORS.messageActions);
+  if (!actionsContainer) return;
+
+  const actionsGroup = actionsContainer.querySelector(SELECTORS.messageActionsGroup);
+  if (!actionsGroup) return;
+
+  // Skip if button already in this group
+  if (actionsGroup.querySelector(".marvinButton")) return;
+
   const button = createMarvinButton(metadata);
 
-  // Strategy 1: Add to message actions toolbar (most reliable)
-  const actionsContainer = messageElement.querySelector(SELECTORS.messageActions);
-  if (actionsContainer) {
-    const actionsGroup = actionsContainer.querySelector(SELECTORS.messageActionsGroup);
-    if (actionsGroup) {
-      actionsGroup.appendChild(button);
-      return;
-    }
-    actionsContainer.appendChild(button);
+  // Insert before "Save for later" button (data-qa="later") for natural placement
+  const saveForLaterButton = actionsGroup.querySelector('[data-qa="later"]');
+  if (saveForLaterButton) {
+    actionsGroup.insertBefore(button, saveForLaterButton);
     return;
   }
 
-  // Strategy 2: Add to hover menu
-  const hoverMenu = messageElement.querySelector(SELECTORS.hoverMenu);
-  if (hoverMenu) {
-    hoverMenu.appendChild(button);
+  // Fallback: Insert before "More actions" button
+  const moreActionsButton = actionsGroup.querySelector('[data-qa="more_message_actions"]');
+  if (moreActionsButton) {
+    actionsGroup.insertBefore(button, moreActionsButton);
     return;
   }
 
-  // Strategy 3: Create a hover container on the message itself
-  const messageKit =
-    messageElement.querySelector(SELECTORS.messageKit) || messageElement;
-
-  // Check if we already added a container
-  if (messageKit.querySelector(".marvin-button-container")) return;
-
-  const buttonContainer = document.createElement("div");
-  buttonContainer.classList.add("marvin-button-container");
-  buttonContainer.style.cssText = `
-    position: absolute;
-    right: 8px;
-    top: 4px;
-    opacity: 0;
-    transition: opacity 0.2s;
-    z-index: 100;
-    background: white;
-    border-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-  `;
-  buttonContainer.appendChild(button);
-
-  // Make message position relative if not already
-  const computedStyle = window.getComputedStyle(messageKit);
-  if (computedStyle.position === "static") {
-    messageKit.style.position = "relative";
-  }
-
-  messageKit.appendChild(buttonContainer);
-
-  // Show on hover
-  const showButton = () => {
-    buttonContainer.style.opacity = "1";
-  };
-  const hideButton = () => {
-    buttonContainer.style.opacity = "0";
-  };
-
-  messageKit.addEventListener("mouseenter", showButton);
-  messageKit.addEventListener("mouseleave", hideButton);
+  // Final fallback: append to end
+  actionsGroup.appendChild(button);
 }
 
 /**
