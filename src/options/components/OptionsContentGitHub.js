@@ -11,6 +11,9 @@ const OptionsContentGitHub = () => {
   const [displayInPRView, setDisplayInPRView] = useState(true);
   const [displayInPRList, setDisplayInPRList] = useState(true);
   const [useSmartTitles, setUseSmartTitles] = useState(true);
+  const [displayInComments, setDisplayInComments] = useState(true);
+  const [displayInReviewComments, setDisplayInReviewComments] = useState(true);
+  const [displayInNotifications, setDisplayInNotifications] = useState(true);
 
   useEffect(() => {
     getStoredGitHubSettings().then((settings) => {
@@ -20,6 +23,9 @@ const OptionsContentGitHub = () => {
         setDisplayInPRView(settings.displayInPRView ?? true);
         setDisplayInPRList(settings.displayInPRList ?? true);
         setUseSmartTitles(settings.useSmartTitles ?? true);
+        setDisplayInComments(settings.displayInComments ?? true);
+        setDisplayInReviewComments(settings.displayInReviewComments ?? true);
+        setDisplayInNotifications(settings.displayInNotifications ?? true);
       }
     });
   }, []);
@@ -28,64 +34,63 @@ const OptionsContentGitHub = () => {
     setStoredGitHubSettings(newSettings);
   };
 
+  const getAllSettings = () => ({
+    enabled,
+    scheduleForToday,
+    displayInPRView,
+    displayInPRList,
+    useSmartTitles,
+    displayInComments,
+    displayInReviewComments,
+    displayInNotifications,
+  });
+
   const handleEnabledChange = () => {
     const newValue = !enabled;
     setEnabled(newValue);
-    saveSettings({
-      enabled: newValue,
-      scheduleForToday,
-      displayInPRView,
-      displayInPRList,
-      useSmartTitles,
-    });
+    saveSettings({ ...getAllSettings(), enabled: newValue });
   };
 
   const handleScheduleForTodayChange = () => {
     const newValue = !scheduleForToday;
     setScheduleForToday(newValue);
-    saveSettings({
-      enabled,
-      scheduleForToday: newValue,
-      displayInPRView,
-      displayInPRList,
-      useSmartTitles,
-    });
+    saveSettings({ ...getAllSettings(), scheduleForToday: newValue });
   };
 
   const handleDisplayInPRViewChange = () => {
     const newValue = !displayInPRView;
     setDisplayInPRView(newValue);
-    saveSettings({
-      enabled,
-      scheduleForToday,
-      displayInPRView: newValue,
-      displayInPRList,
-      useSmartTitles,
-    });
+    saveSettings({ ...getAllSettings(), displayInPRView: newValue });
   };
 
   const handleDisplayInPRListChange = () => {
     const newValue = !displayInPRList;
     setDisplayInPRList(newValue);
-    saveSettings({
-      enabled,
-      scheduleForToday,
-      displayInPRView,
-      displayInPRList: newValue,
-      useSmartTitles,
-    });
+    saveSettings({ ...getAllSettings(), displayInPRList: newValue });
   };
 
   const handleUseSmartTitlesChange = () => {
     const newValue = !useSmartTitles;
     setUseSmartTitles(newValue);
-    saveSettings({
-      enabled,
-      scheduleForToday,
-      displayInPRView,
-      displayInPRList,
-      useSmartTitles: newValue,
-    });
+    saveSettings({ ...getAllSettings(), useSmartTitles: newValue });
+  };
+
+  const handleDisplayInCommentsChange = () => {
+    const newValue = !displayInComments;
+    setDisplayInComments(newValue);
+    saveSettings({ ...getAllSettings(), displayInComments: newValue });
+  };
+
+  const handleDisplayInReviewCommentsChange = () => {
+    const newValue = !displayInReviewComments;
+    setDisplayInReviewComments(newValue);
+    saveSettings({ ...getAllSettings(), displayInReviewComments: newValue });
+  };
+
+  const handleDisplayInNotificationsChange = () => {
+    const newValue = !displayInNotifications;
+    setDisplayInNotifications(newValue);
+    saveSettings({ ...getAllSettings(), displayInNotifications: newValue });
   };
 
   return (
@@ -176,7 +181,7 @@ const OptionsContentGitHub = () => {
         </div>
       </div>
 
-      <div className="rounded-lg bg-white shadow-lg text-sm mt-8 mb-8">
+      <div className="rounded-lg bg-white shadow-lg text-sm mt-8">
         <div className="px-6 py-8">
           <h3 className="font-bold mb-3">Use Smart Titles</h3>
           <div className="flex flex-row items-center justify-between w-full mt-3 mb-3">
@@ -191,6 +196,71 @@ const OptionsContentGitHub = () => {
                 type="checkbox"
                 checked={useSmartTitles}
                 onChange={handleUseSmartTitlesChange}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-1 peer-focus:ring-offset-2 peer-focus:ring-[#1CC5CB] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1CC5CB]"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-white shadow-lg text-sm mt-8">
+        <div className="px-6 py-8">
+          <h3 className="font-bold mb-3">Display in Comments</h3>
+          <div className="flex flex-row items-center justify-between w-full mt-3 mb-3">
+            <p>
+              Display "Add to Marvin" button on PR and issue discussion
+              comments. Creates tasks like "Reply to @author on PR #123".
+            </p>
+            <label className="relative inline-flex cursor-pointer ml-8">
+              <input
+                type="checkbox"
+                checked={displayInComments}
+                onChange={handleDisplayInCommentsChange}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-1 peer-focus:ring-offset-2 peer-focus:ring-[#1CC5CB] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1CC5CB]"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-white shadow-lg text-sm mt-8">
+        <div className="px-6 py-8">
+          <h3 className="font-bold mb-3">Display in Review Comments</h3>
+          <div className="flex flex-row items-center justify-between w-full mt-3 mb-3">
+            <p>
+              Display "Add to Marvin" button on inline code review comments
+              in PR diff views. Creates tasks like "Address review comment on PR #123"
+              or "Apply suggestion on PR #123" for comments with code suggestions.
+            </p>
+            <label className="relative inline-flex cursor-pointer ml-8">
+              <input
+                type="checkbox"
+                checked={displayInReviewComments}
+                onChange={handleDisplayInReviewCommentsChange}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-1 peer-focus:ring-offset-2 peer-focus:ring-[#1CC5CB] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1CC5CB]"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-white shadow-lg text-sm mt-8 mb-8">
+        <div className="px-6 py-8">
+          <h3 className="font-bold mb-3">Display in Notifications</h3>
+          <div className="flex flex-row items-center justify-between w-full mt-3 mb-3">
+            <p>
+              Display "Add to Marvin" button on each notification row at
+              github.com/notifications. Creates context-aware tasks based on
+              notification type (review requests, mentions, assignments, etc.).
+            </p>
+            <label className="relative inline-flex cursor-pointer ml-8">
+              <input
+                type="checkbox"
+                checked={displayInNotifications}
+                onChange={handleDisplayInNotificationsChange}
                 className="sr-only peer"
               />
               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-1 peer-focus:ring-offset-2 peer-focus:ring-[#1CC5CB] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1CC5CB]"></div>

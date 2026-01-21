@@ -252,6 +252,9 @@ export function getStoredGitHubSettings() {
         displayInPRView: true,
         displayInPRList: true,
         useSmartTitles: true,
+        displayInComments: true,
+        displayInReviewComments: true,
+        displayInNotifications: true,
       });
     });
   });

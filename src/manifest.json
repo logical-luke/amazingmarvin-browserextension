@@ -49,7 +49,10 @@
         "*://github.com/pulls",
         "*://github.com/pulls/*",
         "*://github.com/*/*/pulls",
-        "*://github.com/*/*/pulls/*"
+        "*://github.com/*/*/pulls/*",
+        "*://github.com/*/*/issues/*",
+        "*://github.com/notifications",
+        "*://github.com/notifications/*"
       ],
       "js": [
         "./content_scripts/github-pr.js"
