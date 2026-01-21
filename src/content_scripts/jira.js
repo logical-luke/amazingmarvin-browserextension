@@ -11,9 +11,10 @@ const SELECTORS = {
   issueKey: '[data-testid="issue.views.issue-base.foundation.breadcrumbs.current-issue.item"]',
   issueTitle: '[data-testid="issue.views.issue-base.foundation.summary.heading"]',
   issueDescription: '[data-testid="issue.views.field.rich-text.description"]',
-  // Breadcrumb navigation (for button placement on issue page)
-  breadcrumbNav: 'nav[aria-label="Work item breadcrumbs"]',
-  breadcrumbCurrentIssue: '[data-testid="issue.views.issue-base.foundation.breadcrumbs.breadcrumb-current-issue-container"]',
+  // Action items area (top right - watch, share, menu buttons)
+  actionItems: '[role="group"][aria-label="Action items"]',
+  shareButton: '[data-testid="share-dialog.ui.share-button"]',
+  meatballMenu: '[data-testid="issue-meatball-menu.ui.dropdown-trigger.button"]',
 
   // Board view cards
   boardCard: '[data-testid="platform-board-kit.ui.card.card"]',
@@ -408,6 +409,25 @@ function createMarvinButton(metadata, style = 'toolbar') {
       button.style.opacity = '0.7';
       button.style.backgroundColor = 'transparent';
     };
+  } else if (style === 'action') {
+    // Style for action items area - matches Jira's action buttons (watch, share, etc.)
+    button.style.cssText = `
+      background: url(${logo}) no-repeat center center;
+      background-size: 16px 16px;
+      width: 32px;
+      height: 32px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      flex-shrink: 0;
+    `;
+    button.onmouseenter = () => {
+      button.style.backgroundColor = 'rgba(9, 30, 66, 0.08)';
+    };
+    button.onmouseleave = () => {
+      button.style.backgroundColor = 'transparent';
+    };
   }
 
   button.onclick = (e) => {
@@ -442,30 +462,29 @@ function addButtonToIssueView() {
   // Don't add if already exists
   if (marvinButtonExists(document.body, metadata.issueKey)) return true;
 
-  const button = createMarvinButton(metadata, 'breadcrumb');
+  const button = createMarvinButton(metadata, 'action');
 
-  // Primary: Add to breadcrumb navigation
-  const breadcrumbNav = document.querySelector(SELECTORS.breadcrumbNav);
-  if (breadcrumbNav) {
-    const ol = breadcrumbNav.querySelector('ol');
-    if (ol) {
-      const wrapper = document.createElement('div');
-      wrapper.setAttribute('role', 'listitem');
-      wrapper.style.cssText = 'display: inline-flex; align-items: center; margin-left: 8px;';
-      wrapper.appendChild(button);
-      ol.appendChild(wrapper);
-      return true;
+  // Primary: Add to action items area (top right, before share button)
+  const actionItems = document.querySelector(SELECTORS.actionItems);
+  if (actionItems) {
+    // Find the share button to insert before it
+    const shareButton = actionItems.querySelector(SELECTORS.shareButton);
+    if (shareButton) {
+      const shareContainer = shareButton.closest('div[class]');
+      if (shareContainer) {
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'display: inline-flex; align-items: center;';
+        wrapper.appendChild(button);
+        shareContainer.before(wrapper);
+        return true;
+      }
     }
-  }
 
-  // Fallback: Add after current issue breadcrumb
-  const currentIssueContainer = document.querySelector(SELECTORS.breadcrumbCurrentIssue);
-  if (currentIssueContainer) {
+    // Fallback: just append to action items
     const wrapper = document.createElement('div');
-    wrapper.setAttribute('role', 'listitem');
-    wrapper.style.cssText = 'display: inline-flex; align-items: center; margin-left: 8px;';
+    wrapper.style.cssText = 'display: inline-flex; align-items: center;';
     wrapper.appendChild(button);
-    currentIssueContainer.after(wrapper);
+    actionItems.appendChild(wrapper);
     return true;
   }
 
@@ -658,9 +677,9 @@ function handleMutation(mutationsList) {
         return;
       }
 
-      // Check if this is or contains issue content (for /browse/ pages)
-      if (node.matches?.(SELECTORS.breadcrumbNav) ||
-          node.querySelector?.(SELECTORS.breadcrumbNav)) {
+      // Check if this is or contains action items (for /browse/ pages)
+      if (node.matches?.(SELECTORS.actionItems) ||
+          node.querySelector?.(SELECTORS.actionItems)) {
         debouncedAddButtons();
         return;
       }
