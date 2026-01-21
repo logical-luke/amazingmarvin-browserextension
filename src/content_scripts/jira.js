@@ -13,16 +13,21 @@ const SELECTORS = {
   issueDescription: '[data-testid="issue.views.field.rich-text.description"]',
   issueToolbar: '[data-testid="issue.views.issue-base.foundation.quick-add.button"]',
 
-  // Issue detail panel (side panel on board view)
+  // Issue detail panel (side panel on board view) - multiple patterns for different Jira UIs
   issuePanel: '[data-testid="issue.views.issue-details.issue-layout"]',
   issuePanelTitle: '[data-testid="issue.views.issue-base.foundation.summary.heading"]',
   issuePanelQuickAdd: '[data-testid="issue.views.issue-base.foundation.quick-add.button"]',
   issuePanelBreadcrumb: '[data-testid="issue.views.issue-base.foundation.breadcrumbs.breadcrumb-current-issue-container"]',
+  // Additional selectors for side panel
+  sidePanelContainer: '[data-testid="issue-view-side-panel"], [role="dialog"][aria-label*="issue"], [data-testid*="issue-detail"]',
+  quickAddContainer: '[data-testid="issue.views.issue-base.foundation.quick-add.quick-add-item"]',
 
   // Board view cards
   boardCard: '[data-testid="platform-board-kit.ui.card.card"]',
   cardKey: '[data-testid="platform-card.common.ui.key.key"]',
   cardSummary: '[data-testid="platform-card.common.ui.summary.summary"]',
+  cardFooter: '[data-testid="platform-card.ui.card.card-footer"]',
+  cardPriority: '[data-testid*="priority"]',
 
   // Backlog/list view
   backlogRow: '[data-testid="software-backlog.card-list.card"]',
@@ -341,43 +346,47 @@ function createMarvinButton(metadata, style = 'toolbar') {
   button.setAttribute('type', 'button');
 
   if (style === 'toolbar') {
-    // Style for issue detail view toolbar
+    // Style for issue detail view toolbar - matches Jira's icon button style
     button.style.cssText = `
       background: url(${logo}) no-repeat center center;
       background-size: 20px 20px;
       width: 32px;
       height: 32px;
       border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-left: 8px;
-      transition: background-color 0.2s;
-      flex-shrink: 0;
-    `;
-    button.onmouseenter = () => { button.style.backgroundColor = 'rgba(0, 0, 0, 0.1)'; };
-    button.onmouseleave = () => { button.style.backgroundColor = 'transparent'; };
-  } else if (style === 'card') {
-    // Style for board cards
-    button.style.cssText = `
-      background: url(${logo}) no-repeat center center;
-      background-size: 16px 16px;
-      background-color: white;
-      width: 24px;
-      height: 24px;
-      border: 1px solid #dfe1e6;
       border-radius: 3px;
       cursor: pointer;
-      opacity: 0.8;
-      transition: opacity 0.2s, box-shadow 0.2s;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      margin-left: 4px;
+      transition: background-color 0.2s;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+    `;
+    button.onmouseenter = () => { button.style.backgroundColor = 'rgba(9, 30, 66, 0.08)'; };
+    button.onmouseleave = () => { button.style.backgroundColor = 'transparent'; };
+  } else if (style === 'card') {
+    // Style for board cards - small inline button
+    button.style.cssText = `
+      background: url(${logo}) no-repeat center center;
+      background-size: 14px 14px;
+      width: 20px;
+      height: 20px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      opacity: 0.7;
+      transition: opacity 0.2s, background-color 0.2s;
+      flex-shrink: 0;
+      margin-left: 4px;
     `;
     button.onmouseenter = () => {
       button.style.opacity = '1';
-      button.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+      button.style.backgroundColor = 'rgba(9, 30, 66, 0.08)';
     };
     button.onmouseleave = () => {
-      button.style.opacity = '0.8';
-      button.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
+      button.style.opacity = '0.7';
+      button.style.backgroundColor = 'transparent';
     };
   } else if (style === 'list') {
     // Style for list/backlog rows
@@ -429,106 +438,145 @@ function addButtonToIssueView() {
   // Don't add if already exists
   if (marvinButtonExists(document.body, metadata.issueKey)) return true;
 
-  // Try to find the quick-add button (plus icon) - this is a reliable anchor point
-  // It exists in both full issue view and side panel
+  const button = createMarvinButton(metadata, 'toolbar');
+
+  // Strategy 1: Find the quick-add button container (most reliable)
+  // This contains the + button, and sometimes other icons like gear
+  const quickAddContainer = document.querySelector(SELECTORS.quickAddContainer);
+  if (quickAddContainer) {
+    const parent = quickAddContainer.parentElement;
+    if (parent) {
+      parent.appendChild(button);
+      return true;
+    }
+  }
+
+  // Strategy 2: Find the quick-add button itself and insert after it
   const quickAddButton = document.querySelector(SELECTORS.issuePanelQuickAdd) ||
                          document.querySelector(SELECTORS.issueToolbar) ||
                          document.querySelector('[data-testid*="quick-add"]');
 
   if (quickAddButton) {
-    // Create button and place it next to quick-add
-    const button = createMarvinButton(metadata, 'toolbar');
-    const parent = quickAddButton.parentElement;
+    // Find the container that holds the + and gear icons
+    let container = quickAddButton.closest('[data-testid*="quick-add"]');
+    if (!container) {
+      container = quickAddButton.parentElement;
+    }
 
-    if (parent) {
-      // Insert the Marvin button after the quick-add button's container
-      quickAddButton.after(button);
+    if (container && container.parentElement) {
+      // Insert after the container
+      container.after(button);
       return true;
     }
   }
 
-  // Fallback: Find the issue view header/summary area
-  const issueView = document.querySelector(SELECTORS.issueView) ||
-                    document.querySelector(SELECTORS.issuePanelTitle) ||
-                    document.querySelector(SELECTORS.issueTitleAlt);
+  // Strategy 3: Find any button group below the title
+  const title = document.querySelector(SELECTORS.issueTitle) ||
+                document.querySelector(SELECTORS.issuePanelTitle) ||
+                document.querySelector('h1');
 
-  if (!issueView) return false;
-
-  // Find the header area containing the title
-  const headerArea = issueView.closest('[data-testid*="header"]') ||
-                     issueView.closest('[data-testid*="foundation"]') ||
-                     issueView.parentElement?.parentElement;
-
-  if (!headerArea) return false;
-
-  // Look for action buttons area or create insertion point
-  let actionArea = headerArea.querySelector('[data-testid*="actions"]') ||
-                   headerArea.querySelector('[role="group"]') ||
-                   headerArea.querySelector('div:last-child');
-
-  const button = createMarvinButton(metadata, 'toolbar');
-
-  // Try to find a good place to insert
-  if (actionArea && actionArea !== headerArea) {
-    actionArea.appendChild(button);
-  } else {
-    // Insert after the title element
-    issueView.parentElement.appendChild(button);
+  if (title) {
+    // Look for a sibling or nearby container with buttons
+    let current = title.parentElement;
+    for (let i = 0; i < 3 && current; i++) {
+      const buttonGroup = current.querySelector('button[aria-label*="Add"]') ||
+                          current.querySelector('[data-testid*="quick-add"]') ||
+                          current.querySelector('[role="group"]');
+      if (buttonGroup) {
+        const parent = buttonGroup.closest('div');
+        if (parent) {
+          parent.appendChild(button);
+          return true;
+        }
+      }
+      current = current.parentElement;
+    }
   }
 
-  return true;
+  // Strategy 4: Fallback - add after the title
+  if (title && title.parentElement) {
+    title.parentElement.appendChild(button);
+    return true;
+  }
+
+  return false;
 }
 
 /**
  * Adds Marvin buttons to board cards
  */
 function addButtonsToBoardCards() {
-  const cards = document.querySelectorAll(SELECTORS.boardCard) ||
-                document.querySelectorAll(SELECTORS.boardCardAlt);
+  const cards = document.querySelectorAll(SELECTORS.boardCard);
+  const altCards = document.querySelectorAll(SELECTORS.boardCardAlt);
+  const allCards = cards.length > 0 ? cards : altCards;
 
-  if (!cards || cards.length === 0) return false;
+  if (!allCards || allCards.length === 0) return false;
 
   let addedAny = false;
 
-  cards.forEach(card => {
+  allCards.forEach(card => {
     const metadata = getJiraMetadata(card);
     if (!metadata) return;
 
     if (marvinButtonExists(card, metadata.issueKey)) return;
 
-    // Find or create card actions area - positioned at bottom left to avoid 3-dots menu
-    let actionsArea = card.querySelector('.marvin-actions-area');
+    const button = createMarvinButton(metadata, 'card');
 
-    if (!actionsArea) {
-      actionsArea = document.createElement('div');
-      actionsArea.style.cssText = `
-        position: absolute;
-        bottom: 4px;
-        left: 4px;
-        display: none;
-        z-index: 10;
-      `;
-      actionsArea.classList.add('marvin-actions-area');
+    // Strategy 1: Find priority indicator and add button next to it
+    const priorityEl = card.querySelector(SELECTORS.cardPriority) ||
+                       card.querySelector('[aria-label*="Priority"]') ||
+                       card.querySelector('[data-testid*="priority"]');
 
-      // Make card position relative if not already
-      const cardStyle = getComputedStyle(card);
-      if (cardStyle.position === 'static') {
-        card.style.position = 'relative';
+    if (priorityEl) {
+      // Insert after priority element
+      const parent = priorityEl.parentElement;
+      if (parent) {
+        // Ensure parent is flex for inline placement
+        const parentStyle = getComputedStyle(parent);
+        if (!parentStyle.display.includes('flex')) {
+          parent.style.display = 'inline-flex';
+          parent.style.alignItems = 'center';
+        }
+        priorityEl.after(button);
+        addedAny = true;
+        return;
       }
-
-      card.appendChild(actionsArea);
-
-      // Show on hover
-      card.addEventListener('mouseenter', () => {
-        actionsArea.style.display = 'block';
-      });
-      card.addEventListener('mouseleave', () => {
-        actionsArea.style.display = 'none';
-      });
     }
 
-    const button = createMarvinButton(metadata, 'card');
-    actionsArea.appendChild(button);
+    // Strategy 2: Find the footer area with issue key and place it there
+    const footer = card.querySelector(SELECTORS.cardFooter);
+    if (footer) {
+      const issueKeyEl = footer.querySelector(SELECTORS.cardKey) ||
+                         footer.querySelector('[data-testid*="key"]');
+      if (issueKeyEl && issueKeyEl.parentElement) {
+        // Add to the same row as the issue key
+        issueKeyEl.parentElement.style.display = 'inline-flex';
+        issueKeyEl.parentElement.style.alignItems = 'center';
+        issueKeyEl.after(button);
+        addedAny = true;
+        return;
+      }
+      footer.appendChild(button);
+      addedAny = true;
+      return;
+    }
+
+    // Strategy 3: Find the issue key element and add next to it
+    const keyElement = card.querySelector(SELECTORS.cardKey) ||
+                       card.querySelector('[data-testid*="key"]');
+    if (keyElement) {
+      const parent = keyElement.parentElement;
+      if (parent) {
+        parent.style.display = 'inline-flex';
+        parent.style.alignItems = 'center';
+        keyElement.after(button);
+        addedAny = true;
+        return;
+      }
+    }
+
+    // Fallback: append to card
+    card.appendChild(button);
     addedAny = true;
   });
 
