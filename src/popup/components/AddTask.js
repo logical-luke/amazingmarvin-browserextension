@@ -33,6 +33,7 @@ const AddTask = ({ setOnboarded }) => {
   const [displaySettings, setDisplaySettings] = useState({});
 
   const [taskTitle, setTaskTitle] = useState(localStorage.savedTitle || "");
+  const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
   const [note, setNote] = useState(localStorage.savedNote || "");
   const [scheduleDate, setScheduleDate] = useState("unassigned");
   const [scheduleDatePicker, setScheduleDatePicker] = useState({
@@ -347,6 +348,10 @@ const AddTask = ({ setOnboarded }) => {
   const keyUp = useCallback(
     (e) => {
       if (e.which === 13) {
+        // Don't submit if autocomplete is handling the Enter key
+        if (isAutocompleteOpen) {
+          return;
+        }
         if (document.activeElement.tagName === "TEXTAREA") {
           // Don't create when the note is focused
         } else if (taskTitle) {
@@ -356,7 +361,7 @@ const AddTask = ({ setOnboarded }) => {
         }
       }
     },
-    [taskTitle, handleAddTask, setMessage]
+    [taskTitle, handleAddTask, setMessage, isAutocompleteOpen]
   );
 
   const displayElements = () => {
@@ -423,7 +428,11 @@ const AddTask = ({ setOnboarded }) => {
           id="AddTask"
           className="form-control w-full pt-2 pl-5 pr-2 overflow-y-scroll"
         >
-          <AddTaskTitle title={taskTitle} setTaskTitle={setTaskTitle} />
+          <AddTaskTitle
+            title={taskTitle}
+            setTaskTitle={setTaskTitle}
+            onAutocompleteStateChange={setIsAutocompleteOpen}
+          />
 
           {displaySettings?.displayTaskNoteInput && (
             <AddTaskNote note={note} setNote={setNote} />
