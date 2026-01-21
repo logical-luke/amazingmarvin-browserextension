@@ -35,6 +35,32 @@ const SELECTORS = {
   // User detection
   userLogin: 'meta[name="user-login"]',
   userAvatar: '.AppHeader-user',
+
+  // Timeline Comments (PR/Issue discussion)
+  timelineComment: '.timeline-comment',
+  timelineCommentContainer: '.js-comment-container',
+  timelineCommentHeader: '.timeline-comment-header',
+  timelineCommentBody: '.comment-body',
+  timelineCommentActions: '.timeline-comment-actions',
+  commentAuthor: '.timeline-comment-header .author',
+  commentTimestamp: '.timeline-comment-header .timestamp, .timeline-comment-header relative-time',
+
+  // Review Comments (inline diff)
+  reviewComment: '.review-comment',
+  reviewThread: '.js-resolvable-timeline-thread-container',
+  reviewCommentBody: '.review-comment .comment-body',
+  suggestionBlock: '.suggestion, .blob-code-suggestion',
+  fileHeader: '.file-header',
+  filePath: '.file-info a',
+
+  // Notifications Page
+  notificationsList: '.notifications-list',
+  notificationItem: '.notifications-list-item, [data-notification-id]',
+  notificationLink: '.notification-list-item-link',
+  notificationTitle: '.markdown-title',
+  notificationReason: '.notification-reason',
+  notificationRepo: '.notification-list-item-repo',
+  notificationMeta: '.notification-list-item-meta',
 };
 
 /*
@@ -136,7 +162,8 @@ function getPRNumberFromUrl() {
  * Extracts repository info from URL
  */
 function getRepositoryFromUrl() {
-  const match = window.location.pathname.match(/\/([^/]+)\/([^/]+)\/pull/);
+  // Match both /pull/ and /issues/ URLs
+  const match = window.location.pathname.match(/\/([^/]+)\/([^/]+)\/(pull|issues)/);
   if (match) {
     return {
       owner: match[1],
@@ -316,6 +343,141 @@ function getPRMetadataFromListRow(row) {
 }
 
 /**
+ * Gets context type and number from current URL
+ */
+function getContextFromUrl() {
+  const prMatch = window.location.pathname.match(/\/pull\/(\d+)/);
+  if (prMatch) return { type: 'pr', number: prMatch[1] };
+
+  const issueMatch = window.location.pathname.match(/\/issues\/(\d+)/);
+  if (issueMatch) return { type: 'issue', number: issueMatch[1] };
+
+  return null;
+}
+
+/**
+ * Gets comment metadata from a timeline comment element
+ */
+function getCommentMetadata(commentElement) {
+  const context = getContextFromUrl();
+  if (!context) return null;
+
+  // Get author
+  const authorEl = commentElement.querySelector('.author');
+  const author = authorEl ? authorEl.textContent.trim() : 'Unknown';
+
+  // Get comment content (truncated)
+  const bodyEl = commentElement.querySelector('.comment-body');
+  const content = bodyEl ? bodyEl.textContent.trim() : '';
+  const truncatedContent = content.length > 500
+    ? content.substring(0, 497) + '...'
+    : content;
+
+  // Get permalink from timestamp link
+  const timestampEl = commentElement.querySelector('.timestamp');
+  const permalink = timestampEl?.href || window.location.href;
+
+  const repository = getRepositoryFromUrl();
+
+  return {
+    author,
+    content: truncatedContent,
+    contextType: context.type,
+    contextNumber: context.number,
+    permalink,
+    repository: repository ? repository.fullName : null,
+    isReviewComment: false,
+    hasSuggestion: false,
+    filePath: null,
+  };
+}
+
+/**
+ * Gets review comment metadata (inline diff comments)
+ */
+function getReviewCommentMetadata(commentElement) {
+  const context = getContextFromUrl();
+  if (!context) return null;
+
+  // Get author
+  const authorEl = commentElement.querySelector('.author');
+  const author = authorEl ? authorEl.textContent.trim() : 'Unknown';
+
+  // Get comment content (truncated)
+  const bodyEl = commentElement.querySelector('.comment-body');
+  const content = bodyEl ? bodyEl.textContent.trim() : '';
+  const truncatedContent = content.length > 500
+    ? content.substring(0, 497) + '...'
+    : content;
+
+  // Check for suggestion
+  const hasSuggestion = !!commentElement.querySelector('.suggestion, .blob-code-suggestion');
+
+  // Get file path if available
+  const fileContainer = commentElement.closest('.file');
+  const fileHeader = fileContainer?.querySelector('.file-header');
+  const filePath = fileHeader?.querySelector('.file-info a')?.textContent.trim() || null;
+
+  // Get permalink
+  const timestampEl = commentElement.querySelector('.timestamp, relative-time');
+  const parentLink = timestampEl?.closest('a');
+  const permalink = parentLink?.href || window.location.href;
+
+  const repository = getRepositoryFromUrl();
+
+  return {
+    author,
+    content: truncatedContent,
+    contextType: context.type,
+    contextNumber: context.number,
+    permalink,
+    repository: repository ? repository.fullName : null,
+    isReviewComment: true,
+    hasSuggestion,
+    filePath,
+  };
+}
+
+/**
+ * Gets notification metadata from a notification row element
+ */
+function getNotificationMetadata(notificationElement) {
+  // Get title
+  const titleEl = notificationElement.querySelector(SELECTORS.notificationTitle);
+  const title = titleEl ? titleEl.textContent.trim() : 'Notification';
+
+  // Get URL
+  const linkEl = notificationElement.querySelector(SELECTORS.notificationLink);
+  const url = linkEl?.href || window.location.href;
+
+  // Get notification type/reason
+  const reasonEl = notificationElement.querySelector(SELECTORS.notificationReason);
+  const reason = reasonEl?.getAttribute('title') || reasonEl?.textContent.trim().toLowerCase().replace(/\s+/g, '_') || 'notification';
+
+  // Get repository
+  const repoEl = notificationElement.querySelector(SELECTORS.notificationRepo);
+  const repository = repoEl ? repoEl.textContent.trim() : null;
+
+  // Check if unread
+  const isUnread = notificationElement.classList.contains('is-unread');
+
+  // Extract PR/Issue number from URL
+  const numberMatch = url.match(/\/(pull|issues)\/(\d+)/);
+  const contextType = numberMatch ? (numberMatch[1] === 'pull' ? 'pr' : 'issue') : null;
+  const contextNumber = numberMatch ? numberMatch[2] : null;
+
+  return {
+    title,
+    url,
+    reason,
+    repository,
+    isUnread,
+    contextType,
+    contextNumber,
+  };
+}
+
+/**
  * Generates a smart task title based on PR state
  */
 function getSuggestedTitle(metadata, useSmartTitles) {
@@ -347,6 +509,56 @@ function getSuggestedTitle(metadata, useSmartTitles) {
 
   // Default format
   return `[PR #${metadata.prNumber}: ${metadata.prTitle}](${metadata.prUrl})`;
+}
+
+/**
+ * Generates smart title for a comment
+ */
+function getCommentSuggestedTitle(metadata, useSmartTitles) {
+  const contextLabel = metadata.contextType === 'pr' ? 'PR' : 'Issue';
+
+  if (!useSmartTitles) {
+    return `[Comment on ${contextLabel} #${metadata.contextNumber}](${metadata.permalink})`;
+  }
+
+  if (metadata.isReviewComment && metadata.hasSuggestion) {
+    return `[Apply suggestion on PR #${metadata.contextNumber}](${metadata.permalink})`;
+  }
+
+  if (metadata.isReviewComment) {
+    return `[Address review comment on PR #${metadata.contextNumber}](${metadata.permalink})`;
+  }
+
+  return `[Reply to @${metadata.author} on ${contextLabel} #${metadata.contextNumber}](${metadata.permalink})`;
+}
+
+/**
+ * Generates smart title for a notification
+ */
+function getNotificationSuggestedTitle(metadata, useSmartTitles) {
+  const contextLabel = metadata.contextType === 'pr' ? 'PR' : 'Issue';
+  const numberPart = metadata.contextNumber ? ` #${metadata.contextNumber}` : '';
+
+  if (!useSmartTitles) {
+    return `[${metadata.title}](${metadata.url})`;
+  }
+
+  switch (metadata.reason) {
+    case 'review_requested':
+      return `[Review${numberPart}: ${metadata.title}](${metadata.url})`;
+    case 'mention':
+      return `[Respond to mention in${numberPart}](${metadata.url})`;
+    case 'assign':
+      return `[Work on ${contextLabel}${numberPart}: ${metadata.title}](${metadata.url})`;
+    case 'ci_activity':
+      return `[Check CI for${numberPart}: ${metadata.title}](${metadata.url})`;
+    case 'comment':
+      return `[Check comment on${numberPart}](${metadata.url})`;
+    case 'state_change':
+      return `[Review state change:${numberPart}](${metadata.url})`;
+    default:
+      return `[${metadata.title}](${metadata.url})`;
+  }
 }
 
 /*
@@ -401,6 +613,89 @@ async function handleMarvinButtonClick(metadata) {
 
   noteLines.push('');
   noteLines.push(`[View on GitHub](${metadata.prUrl})`);
+
+  data.note = noteLines.join('\n');
+
+  if (scheduleForToday) {
+    data.day = formatDate(new Date());
+  }
+
+  try {
+    const result = await addTask(data);
+    showSuccessMessage(result);
+  } catch (error) {
+    console.error('Failed to add task to Marvin:', error);
+    showSuccessMessage('fail');
+  }
+}
+
+/**
+ * Handles click on Marvin button for comments
+ */
+async function handleCommentMarvinButtonClick(metadata) {
+  const token = await getStoredToken();
+
+  if (!token) {
+    showSuccessMessage("noToken");
+    return;
+  }
+
+  const data = {
+    title: getCommentSuggestedTitle(metadata, useSmartTitles),
+    done: false,
+  };
+
+  // Build note
+  let noteLines = [':::info'];
+  if (metadata.repository) noteLines.push(`Repository: ${metadata.repository}`);
+  noteLines.push(`Author: ${metadata.author}`);
+  noteLines.push(`Type: ${metadata.isReviewComment ? 'Review Comment' : 'Comment'}`);
+  if (metadata.filePath) noteLines.push(`File: ${metadata.filePath}`);
+  if (metadata.hasSuggestion) noteLines.push('Contains code suggestion');
+  noteLines.push('');
+  noteLines.push('Comment:');
+  noteLines.push(metadata.content);
+  noteLines.push('');
+  noteLines.push(`[View on GitHub](${metadata.permalink})`);
+
+  data.note = noteLines.join('\n');
+
+  if (scheduleForToday) {
+    data.day = formatDate(new Date());
+  }
+
+  try {
+    const result = await addTask(data);
+    showSuccessMessage(result);
+  } catch (error) {
+    console.error('Failed to add task to Marvin:', error);
+    showSuccessMessage('fail');
+  }
+}
+
+/**
+ * Handles click on Marvin button for notifications
+ */
+async function handleNotificationMarvinButtonClick(metadata) {
+  const token = await getStoredToken();
+
+  if (!token) {
+    showSuccessMessage("noToken");
+    return;
+  }
+
+  const data = {
+    title: getNotificationSuggestedTitle(metadata, useSmartTitles),
+    done: false,
+  };
+
+  // Build note
+  let noteLines = [':::info'];
+  if (metadata.repository) noteLines.push(`Repository: ${metadata.repository}`);
+  noteLines.push(`Type: ${metadata.reason.replace(/_/g, ' ')}`);
+  noteLines.push(`Status: ${metadata.isUnread ? 'Unread' : 'Read'}`);
+  noteLines.push('');
+  noteLines.push(`[View on GitHub](${metadata.url})`);
 
   data.note = noteLines.join('\n');
 
@@ -575,6 +870,213 @@ function addButtonsToPRList() {
   return addedAny;
 }
 
+/**
+ * Adds Marvin button to timeline comments
+ */
+function addButtonsToTimelineComments() {
+  const comments = document.querySelectorAll(SELECTORS.timelineComment);
+
+  if (!comments || comments.length === 0) return false;
+
+  let addedAny = false;
+
+  comments.forEach(comment => {
+    // Skip if button already exists
+    if (comment.querySelector('.marvinButton')) return;
+
+    const metadata = getCommentMetadata(comment);
+    if (!metadata || !metadata.content) return;
+
+    const actionsArea = comment.querySelector(SELECTORS.timelineCommentActions);
+    if (!actionsArea) return;
+
+    const button = document.createElement('button');
+    button.classList.add('marvinButton');
+    button.setAttribute('aria-label', 'Add to Marvin');
+    button.setAttribute('title', 'Add to Marvin');
+    button.setAttribute('type', 'button');
+
+    // Apply comment style
+    button.style.cssText = `
+      background: url(${logo}) no-repeat center center;
+      background-size: 14px 14px;
+      width: 26px;
+      height: 26px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-left: 4px;
+      transition: background-color 0.2s;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+    `;
+    button.onmouseenter = () => {
+      button.style.backgroundColor = 'var(--bgColor-muted, #f6f8fa)';
+    };
+    button.onmouseleave = () => {
+      button.style.backgroundColor = 'transparent';
+    };
+
+    button.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleCommentMarvinButtonClick(metadata);
+    };
+
+    // Insert before the overflow menu (details element)
+    const overflowMenu = actionsArea.querySelector('details');
+    if (overflowMenu) {
+      overflowMenu.before(button);
+    } else {
+      actionsArea.appendChild(button);
+    }
+
+    addedAny = true;
+  });
+
+  return addedAny;
+}
+
+/**
+ * Adds Marvin button to review comments (inline diff comments)
+ */
+function addButtonsToReviewComments() {
+  const reviewComments = document.querySelectorAll(SELECTORS.reviewComment);
+
+  if (!reviewComments || reviewComments.length === 0) return false;
+
+  let addedAny = false;
+
+  reviewComments.forEach(comment => {
+    // Skip if button already exists
+    if (comment.querySelector('.marvinButton')) return;
+
+    const metadata = getReviewCommentMetadata(comment);
+    if (!metadata || !metadata.content) return;
+
+    const header = comment.querySelector('.timeline-comment-header');
+    if (!header) return;
+
+    const button = document.createElement('button');
+    button.classList.add('marvinButton');
+    button.setAttribute('aria-label', 'Add to Marvin');
+    button.setAttribute('title', metadata.hasSuggestion ? 'Add suggestion to Marvin' : 'Add to Marvin');
+    button.setAttribute('type', 'button');
+
+    // Apply review comment style - smaller
+    button.style.cssText = `
+      background: url(${logo}) no-repeat center center;
+      background-size: 12px 12px;
+      width: 22px;
+      height: 22px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 4px;
+      opacity: 0.7;
+      transition: opacity 0.2s, background-color 0.2s;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+    `;
+    button.onmouseenter = () => {
+      button.style.opacity = '1';
+      button.style.backgroundColor = 'var(--bgColor-muted, #f6f8fa)';
+    };
+    button.onmouseleave = () => {
+      button.style.opacity = '0.7';
+      button.style.backgroundColor = 'transparent';
+    };
+
+    button.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleCommentMarvinButtonClick(metadata);
+    };
+
+    // Append to header
+    header.appendChild(button);
+    addedAny = true;
+  });
+
+  return addedAny;
+}
+
+/**
+ * Adds Marvin button to notification rows
+ */
+function addButtonsToNotifications() {
+  const notifications = document.querySelectorAll(SELECTORS.notificationItem);
+
+  if (!notifications || notifications.length === 0) return false;
+
+  let addedAny = false;
+
+  notifications.forEach(notification => {
+    // Skip if button already exists
+    if (notification.querySelector('.marvinButton')) return;
+
+    const metadata = getNotificationMetadata(notification);
+    if (!metadata) return;
+
+    const button = document.createElement('button');
+    button.classList.add('marvinButton');
+    button.setAttribute('aria-label', 'Add to Marvin');
+    button.setAttribute('title', 'Add to Marvin');
+    button.setAttribute('type', 'button');
+
+    // Apply notification style
+    button.style.cssText = `
+      background: url(${logo}) no-repeat center center;
+      background-size: 16px 16px;
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--borderColor-default, rgba(31, 35, 40, 0.15));
+      border-radius: 6px;
+      cursor: pointer;
+      margin-left: 8px;
+      transition: background-color 0.2s;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+      background-color: var(--bgColor-default, #ffffff);
+    `;
+    button.onmouseenter = () => {
+      button.style.backgroundColor = 'var(--bgColor-muted, #f6f8fa)';
+    };
+    button.onmouseleave = () => {
+      button.style.backgroundColor = 'var(--bgColor-default, #ffffff)';
+    };
+
+    button.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleNotificationMarvinButtonClick(metadata);
+    };
+
+    // Find the meta area or end of row to append
+    const metaArea = notification.querySelector(SELECTORS.notificationMeta);
+    if (metaArea) {
+      metaArea.style.display = 'inline-flex';
+      metaArea.style.alignItems = 'center';
+      metaArea.appendChild(button);
+    } else {
+      notification.appendChild(button);
+    }
+
+    addedAny = true;
+  });
+
+  return addedAny;
+}
+
 /*
     ***************
     Main Logic
@@ -584,6 +1086,9 @@ function addButtonsToPRList() {
 let enabled = true;
 let displayInPRView = true;
 let displayInPRList = true;
+let displayInComments = true;
+let displayInReviewComments = true;
+let displayInNotifications = true;
 let isInitialized = false;
 let observer = null;
 
@@ -604,6 +1109,21 @@ function addButtonsToCurrentView() {
     added = addButtonsToPRList() || added;
   }
 
+  // Timeline comments in PR/Issue views
+  if ((url.match(/\/pull\/\d+/) || url.match(/\/issues\/\d+/)) && displayInComments) {
+    added = addButtonsToTimelineComments() || added;
+  }
+
+  // Review comments in PR views (inline diff comments)
+  if (url.match(/\/pull\/\d+/) && displayInReviewComments) {
+    added = addButtonsToReviewComments() || added;
+  }
+
+  // Notifications page
+  if (url.includes('/notifications') && displayInNotifications) {
+    added = addButtonsToNotifications() || added;
+  }
+
   return added;
 }
 
@@ -621,7 +1141,7 @@ function debounce(func, wait) {
 const debouncedAddButtons = debounce(addButtonsToCurrentView, 250);
 
 /**
- * Handles DOM mutations - watches for new PR elements
+ * Handles DOM mutations - watches for new PR, comment, and notification elements
  */
 function handleMutation(mutationsList) {
   for (const mutation of mutationsList) {
@@ -639,6 +1159,24 @@ function handleMutation(mutationsList) {
         debouncedAddButtons();
         return;
       }
+
+      // Check for comment elements
+      if (node.matches?.(SELECTORS.timelineComment) ||
+          node.matches?.(SELECTORS.reviewComment) ||
+          node.querySelector?.(SELECTORS.timelineComment) ||
+          node.querySelector?.(SELECTORS.reviewComment) ||
+          node.querySelector?.(SELECTORS.timelineCommentActions)) {
+        debouncedAddButtons();
+        return;
+      }
+
+      // Check for notification elements
+      if (node.matches?.(SELECTORS.notificationItem) ||
+          node.querySelector?.(SELECTORS.notificationItem) ||
+          node.querySelector?.(SELECTORS.notificationsList)) {
+        debouncedAddButtons();
+        return;
+      }
     }
   }
 }
@@ -649,6 +1187,8 @@ function handleMutation(mutationsList) {
 function isGitHubLoaded() {
   return document.querySelector(SELECTORS.prTitle) ||
          document.querySelector(SELECTORS.prListRow) ||
+         document.querySelector(SELECTORS.timelineComment) ||
+         document.querySelector(SELECTORS.notificationsList) ||
          document.querySelector('.repository-content') ||
          document.querySelector('[data-turbo-body]');
 }
@@ -664,6 +1204,9 @@ async function init() {
   displayInPRView = settings.displayInPRView ?? true;
   displayInPRList = settings.displayInPRList ?? true;
   useSmartTitles = settings.useSmartTitles ?? true;
+  displayInComments = settings.displayInComments ?? true;
+  displayInReviewComments = settings.displayInReviewComments ?? true;
+  displayInNotifications = settings.displayInNotifications ?? true;
 
   // If disabled, don't proceed
   if (!enabled) {
@@ -672,7 +1215,7 @@ async function init() {
   }
 
   // If all display options are disabled, don't proceed
-  if (!displayInPRView && !displayInPRList) {
+  if (!displayInPRView && !displayInPRList && !displayInComments && !displayInReviewComments && !displayInNotifications) {
     clearInterval(loopInterval);
     return;
   }
