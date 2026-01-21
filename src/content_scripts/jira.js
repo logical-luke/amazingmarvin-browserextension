@@ -6,17 +6,23 @@ const logo = chrome.runtime.getURL("static/logo.png");
 
 // Jira-specific selectors (using data-testid for stability where possible)
 const SELECTORS = {
-  // Issue detail view
+  // Issue detail view (full page)
   issueView: '[data-testid="issue.views.issue-base.foundation.summary.heading"]',
   issueKey: '[data-testid="issue.views.issue-base.foundation.breadcrumbs.current-issue.item"]',
   issueTitle: '[data-testid="issue.views.issue-base.foundation.summary.heading"]',
   issueDescription: '[data-testid="issue.views.field.rich-text.description"]',
   issueToolbar: '[data-testid="issue.views.issue-base.foundation.quick-add.button"]',
 
+  // Issue detail panel (side panel on board view)
+  issuePanel: '[data-testid="issue.views.issue-details.issue-layout"]',
+  issuePanelTitle: '[data-testid="issue.views.issue-base.foundation.summary.heading"]',
+  issuePanelQuickAdd: '[data-testid="issue.views.issue-base.foundation.quick-add.button"]',
+  issuePanelBreadcrumb: '[data-testid="issue.views.issue-base.foundation.breadcrumbs.breadcrumb-current-issue-container"]',
+
   // Board view cards
   boardCard: '[data-testid="platform-board-kit.ui.card.card"]',
   cardKey: '[data-testid="platform-card.common.ui.key.key"]',
-  cardSummary: '[data-testid="platform-card.common.ui.summary.card-summary"]',
+  cardSummary: '[data-testid="platform-card.common.ui.summary.summary"]',
 
   // Backlog/list view
   backlogRow: '[data-testid="software-backlog.card-list.card"]',
@@ -26,6 +32,7 @@ const SELECTORS = {
   issueKeyAlt: '[data-testid*="issue-key"], [data-testid*="breadcrumbs"] a',
   issueTitleAlt: 'h1[data-testid*="summary"], [data-testid*="summary"] h1',
   boardCardAlt: '[data-rbd-draggable-id], .ghx-issue',
+  cardSummaryAlt: '[data-testid*="card-summary"], [data-testid*="summary"]',
 };
 
 /*
@@ -155,26 +162,45 @@ function getIssueKeyFromElement(element) {
  * Gets issue summary/title from DOM
  */
 function getIssueSummary(element) {
-  // For issue detail view
-  const titleElement = document.querySelector(SELECTORS.issueTitle) ||
-                       document.querySelector(SELECTORS.issueTitleAlt) ||
-                       document.querySelector('h1');
-
-  if (titleElement && !element) {
-    return titleElement.textContent.trim();
-  }
-
-  // For card/list elements
+  // For card/list elements - check this first when element is provided
   if (element) {
-    const cardSummary = element.querySelector(SELECTORS.cardSummary) ||
-                        element.querySelector('[data-testid*="summary"]') ||
-                        element.querySelector('.ghx-summary');
+    // Try primary selector
+    let cardSummary = element.querySelector(SELECTORS.cardSummary);
+    if (cardSummary) return cardSummary.textContent.trim();
+
+    // Try alternative selectors
+    cardSummary = element.querySelector(SELECTORS.cardSummaryAlt);
+    if (cardSummary) return cardSummary.textContent.trim();
+
+    // Try common patterns
+    cardSummary = element.querySelector('[data-testid*="summary"]') ||
+                  element.querySelector('.ghx-summary') ||
+                  element.querySelector('span[class*="summary"]') ||
+                  element.querySelector('[class*="title"]');
 
     if (cardSummary) return cardSummary.textContent.trim();
 
-    // Try to find summary in nearby elements
-    const summarySpan = element.querySelector('span[class*="summary"], [class*="title"]');
-    if (summarySpan) return summarySpan.textContent.trim();
+    // Last resort: look for any text that's not the issue key
+    const issueKey = getIssueKeyFromElement(element);
+    const allText = element.textContent.trim();
+    if (issueKey && allText.includes(issueKey)) {
+      // Try to extract text after the issue key
+      const parts = allText.split(issueKey);
+      if (parts[1]) {
+        const summary = parts[1].trim().split('\n')[0].trim();
+        if (summary && summary.length > 3) return summary;
+      }
+    }
+  }
+
+  // For issue detail view (full page or side panel)
+  const titleElement = document.querySelector(SELECTORS.issueTitle) ||
+                       document.querySelector(SELECTORS.issuePanelTitle) ||
+                       document.querySelector(SELECTORS.issueTitleAlt) ||
+                       document.querySelector('h1');
+
+  if (titleElement) {
+    return titleElement.textContent.trim();
   }
 
   return 'Jira Issue';
@@ -394,20 +420,39 @@ function marvinButtonExists(container, issueKey) {
 }
 
 /**
- * Adds Marvin button to issue detail view
+ * Adds Marvin button to issue detail view (both full page and side panel)
  */
 function addButtonToIssueView() {
-  // Find the issue view header/summary area
-  const issueView = document.querySelector(SELECTORS.issueView) ||
-                    document.querySelector(SELECTORS.issueTitleAlt);
-
-  if (!issueView) return false;
-
   const metadata = getJiraMetadata();
   if (!metadata) return false;
 
   // Don't add if already exists
   if (marvinButtonExists(document.body, metadata.issueKey)) return true;
+
+  // Try to find the quick-add button (plus icon) - this is a reliable anchor point
+  // It exists in both full issue view and side panel
+  const quickAddButton = document.querySelector(SELECTORS.issuePanelQuickAdd) ||
+                         document.querySelector(SELECTORS.issueToolbar) ||
+                         document.querySelector('[data-testid*="quick-add"]');
+
+  if (quickAddButton) {
+    // Create button and place it next to quick-add
+    const button = createMarvinButton(metadata, 'toolbar');
+    const parent = quickAddButton.parentElement;
+
+    if (parent) {
+      // Insert the Marvin button after the quick-add button's container
+      quickAddButton.after(button);
+      return true;
+    }
+  }
+
+  // Fallback: Find the issue view header/summary area
+  const issueView = document.querySelector(SELECTORS.issueView) ||
+                    document.querySelector(SELECTORS.issuePanelTitle) ||
+                    document.querySelector(SELECTORS.issueTitleAlt);
+
+  if (!issueView) return false;
 
   // Find the header area containing the title
   const headerArea = issueView.closest('[data-testid*="header"]') ||
@@ -451,15 +496,15 @@ function addButtonsToBoardCards() {
 
     if (marvinButtonExists(card, metadata.issueKey)) return;
 
-    // Find or create card actions area
+    // Find or create card actions area - positioned at bottom left to avoid 3-dots menu
     let actionsArea = card.querySelector('.marvin-actions-area');
 
     if (!actionsArea) {
       actionsArea = document.createElement('div');
       actionsArea.style.cssText = `
         position: absolute;
-        top: 4px;
-        right: 4px;
+        bottom: 4px;
+        left: 4px;
         display: none;
         z-index: 10;
       `;
@@ -547,19 +592,29 @@ function addButtonsToCurrentView() {
   const url = window.location.href;
   let added = false;
 
-  // Issue detail view (browse page or selected issue in side panel)
-  if ((url.includes('/browse/') || url.includes('selectedIssue=')) && displayInIssueView) {
+  // Issue detail view (browse page)
+  if (url.includes('/browse/') && displayInIssueView) {
     added = addButtonToIssueView() || added;
   }
 
-  // Board view
+  // Board view - handle both cards and side panel
   if ((url.includes('/board') || url.includes('/boards/')) && displayInBoardView) {
     added = addButtonsToBoardCards() || added;
+
+    // Also check for side panel (selectedIssue query param)
+    if (url.includes('selectedIssue=') && displayInIssueView) {
+      added = addButtonToIssueView() || added;
+    }
   }
 
   // Backlog/list view
   if (url.includes('/backlog') && displayInListView) {
     added = addButtonsToListView() || added;
+
+    // Also check for side panel in backlog view
+    if (url.includes('selectedIssue=') && displayInIssueView) {
+      added = addButtonToIssueView() || added;
+    }
   }
 
   return added;
