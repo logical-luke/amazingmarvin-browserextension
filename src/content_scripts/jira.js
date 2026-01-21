@@ -18,9 +18,13 @@ const SELECTORS = {
   issuePanelTitle: '[data-testid="issue.views.issue-base.foundation.summary.heading"]',
   issuePanelQuickAdd: '[data-testid="issue.views.issue-base.foundation.quick-add.button"]',
   issuePanelBreadcrumb: '[data-testid="issue.views.issue-base.foundation.breadcrumbs.breadcrumb-current-issue-container"]',
-  // Additional selectors for side panel
+  // Additional selectors for side panel - matches the compact quick-add buttons
   sidePanelContainer: '[data-testid="issue-view-side-panel"], [role="dialog"][aria-label*="issue"], [data-testid*="issue-detail"]',
   quickAddContainer: '[data-testid="issue.views.issue-base.foundation.quick-add.quick-add-item"]',
+  // Compact quick-add buttons (used in side panel)
+  quickAddCompactAdd: '[data-testid="issue-view-foundation.quick-add.quick-add-items-compact.add-button-dropdown--trigger"]',
+  quickAddCompactApps: '[data-testid="issue-view-foundation.quick-add.quick-add-items-compact.apps-button-dropdown--trigger"]',
+  quickAddCompactContainer: '[data-testid*="quick-add-items-compact"]',
 
   // Board view cards
   boardCard: '[data-testid="platform-board-kit.ui.card.card"]',
@@ -440,8 +444,36 @@ function addButtonToIssueView() {
 
   const button = createMarvinButton(metadata, 'toolbar');
 
-  // Strategy 1: Find the quick-add button container (most reliable)
-  // This contains the + button, and sometimes other icons like gear
+  // Strategy 1: Find compact quick-add buttons (side panel)
+  // These have data-testid like "issue-view-foundation.quick-add.quick-add-items-compact..."
+  const compactAppsButton = document.querySelector(SELECTORS.quickAddCompactApps);
+  if (compactAppsButton) {
+    // Find the parent container that holds both buttons
+    const presentationDiv = compactAppsButton.closest('[role="presentation"]');
+    if (presentationDiv && presentationDiv.parentElement) {
+      // Add a new presentation div with our button to match the structure
+      const wrapper = document.createElement('div');
+      wrapper.setAttribute('role', 'presentation');
+      wrapper.appendChild(button);
+      presentationDiv.after(wrapper);
+      return true;
+    }
+  }
+
+  const compactAddButton = document.querySelector(SELECTORS.quickAddCompactAdd);
+  if (compactAddButton) {
+    // Find the grandparent container (css-rf2cmq in the HTML)
+    let container = compactAddButton.closest('[role="presentation"]')?.parentElement;
+    if (container) {
+      const wrapper = document.createElement('div');
+      wrapper.setAttribute('role', 'presentation');
+      wrapper.appendChild(button);
+      container.appendChild(wrapper);
+      return true;
+    }
+  }
+
+  // Strategy 2: Find the quick-add button container (full page view)
   const quickAddContainer = document.querySelector(SELECTORS.quickAddContainer);
   if (quickAddContainer) {
     const parent = quickAddContainer.parentElement;
@@ -451,7 +483,7 @@ function addButtonToIssueView() {
     }
   }
 
-  // Strategy 2: Find the quick-add button itself and insert after it
+  // Strategy 3: Find the quick-add button itself and insert after it
   const quickAddButton = document.querySelector(SELECTORS.issuePanelQuickAdd) ||
                          document.querySelector(SELECTORS.issueToolbar) ||
                          document.querySelector('[data-testid*="quick-add"]');
@@ -470,7 +502,7 @@ function addButtonToIssueView() {
     }
   }
 
-  // Strategy 3: Find any button group below the title
+  // Strategy 4: Find any button group below the title
   const title = document.querySelector(SELECTORS.issueTitle) ||
                 document.querySelector(SELECTORS.issuePanelTitle) ||
                 document.querySelector('h1');
@@ -493,7 +525,7 @@ function addButtonToIssueView() {
     }
   }
 
-  // Strategy 4: Fallback - add after the title
+  // Strategy 5: Fallback - add after the title
   if (title && title.parentElement) {
     title.parentElement.appendChild(button);
     return true;
