@@ -1046,7 +1046,7 @@ function addButtonsToNotifications() {
       display: inline-block;
       vertical-align: middle;
       position: relative;
-      top: 5px;
+      top: 7px;
     `;
     button.onmouseenter = () => {
       button.style.opacity = '1';
