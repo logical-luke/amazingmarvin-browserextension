@@ -242,3 +242,25 @@ export function setStoredSlackSettings(settings) {
     });
   });
 }
+
+export function getStoredGitHubSettings() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["githubSettings"]).then((result) => {
+      resolve(result.githubSettings || {
+        enabled: true,
+        scheduleForToday: true,
+        displayInPRView: true,
+        displayInPRList: true,
+        useSmartTitles: true,
+      });
+    });
+  });
+}
+
+export function setStoredGitHubSettings(settings) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ githubSettings: settings }).then(() => {
+      resolve();
+    });
+  });
+}

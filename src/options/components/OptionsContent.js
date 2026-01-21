@@ -5,6 +5,7 @@ import OptionsContentSync from "./OptionsContentSync";
 import OptionsContentGmail from "./OptionsContentGmail";
 import OptionsContentJira from "./OptionsContentJira";
 import OptionsContentSlack from "./OptionsContentSlack";
+import OptionsContentGitHub from "./OptionsContentGitHub";
 
 const OptionsContent = ({ selectedSetting }) => {
   switch (selectedSetting) {
@@ -22,6 +23,8 @@ const OptionsContent = ({ selectedSetting }) => {
       return <OptionsContentJira />;
     case "slack":
       return <OptionsContentSlack />;
+    case "github":
+      return <OptionsContentGitHub />;
     default:
       return <OptionsContentGeneral />;
   }
