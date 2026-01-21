@@ -1030,29 +1030,31 @@ function addButtonsToNotifications() {
     button.setAttribute('title', 'Add to Marvin');
     button.setAttribute('type', 'button');
 
-    // Apply notification style
+    // Apply notification style - smaller inline button
     button.style.cssText = `
       background: url(${logo}) no-repeat center center;
-      background-size: 16px 16px;
-      width: 28px;
-      height: 28px;
-      border: 1px solid var(--borderColor-default, rgba(31, 35, 40, 0.15));
-      border-radius: 6px;
+      background-size: 14px 14px;
+      width: 22px;
+      height: 22px;
+      border: none;
+      border-radius: 4px;
       cursor: pointer;
-      margin-left: 8px;
-      transition: background-color 0.2s;
+      margin-right: 6px;
+      opacity: 0.6;
+      transition: opacity 0.2s, background-color 0.2s;
       flex-shrink: 0;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       vertical-align: middle;
-      background-color: var(--bgColor-default, #ffffff);
     `;
     button.onmouseenter = () => {
-      button.style.backgroundColor = 'var(--bgColor-muted, #f6f8fa)';
+      button.style.opacity = '1';
+      button.style.backgroundColor = 'rgba(0, 0, 0, 0.08)';
     };
     button.onmouseleave = () => {
-      button.style.backgroundColor = 'var(--bgColor-default, #ffffff)';
+      button.style.opacity = '0.6';
+      button.style.backgroundColor = 'transparent';
     };
 
     button.onclick = (e) => {
@@ -1061,17 +1063,19 @@ function addButtonsToNotifications() {
       handleNotificationMarvinButtonClick(metadata);
     };
 
-    // Find the meta area or end of row to append
-    const metaArea = notification.querySelector(SELECTORS.notificationMeta);
-    if (metaArea) {
-      metaArea.style.display = 'inline-flex';
-      metaArea.style.alignItems = 'center';
-      metaArea.appendChild(button);
+    // Insert before the title link to keep it inline
+    const titleLink = notification.querySelector(SELECTORS.notificationLink);
+    if (titleLink) {
+      titleLink.parentElement.insertBefore(button, titleLink);
+      addedAny = true;
     } else {
-      notification.appendChild(button);
+      // Fallback: try to find the title element
+      const title = notification.querySelector(SELECTORS.notificationTitle);
+      if (title && title.parentElement) {
+        title.parentElement.insertBefore(button, title);
+        addedAny = true;
+      }
     }
-
-    addedAny = true;
   });
 
   return addedAny;
