@@ -199,3 +199,24 @@ export function setStoredBadgeSettings(settings) {
     });
   });
 }
+
+export function getStoredJiraSettings() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["jiraSettings"]).then((result) => {
+      resolve(result.jiraSettings || {
+        displayInIssueView: true,
+        displayInBoardView: true,
+        displayInListView: true,
+        scheduleForToday: true,
+      });
+    });
+  });
+}
+
+export function setStoredJiraSettings(settings) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ jiraSettings: settings }).then(() => {
+      resolve();
+    });
+  });
+}

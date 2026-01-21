@@ -3,6 +3,7 @@ import OptionsContentBadge from "./OptionsContentBadge";
 import OptionsContentApi from "./OptionsContentApi";
 import OptionsContentSync from "./OptionsContentSync";
 import OptionsContentGmail from "./OptionsContentGmail";
+import OptionsContentJira from "./OptionsContentJira";
 
 const OptionsContent = ({ selectedSetting }) => {
   switch (selectedSetting) {
@@ -16,6 +17,8 @@ const OptionsContent = ({ selectedSetting }) => {
       return <OptionsContentSync />;
     case "gmail":
       return <OptionsContentGmail />;
+    case "jira":
+      return <OptionsContentJira />;
     default:
       return <OptionsContentGeneral />;
   }
