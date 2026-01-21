@@ -81,22 +81,25 @@ chrome.runtime.onInstalled.addListener(() => {
     }
   });
 
-  chrome.contextMenus.create({
-    id: "addTask",
-    title: "Add task to Marvin",
-    contexts: ["selection"],
-  });
-  chrome.contextMenus.create({
-    id: "addTaskToday",
-    title: "Add task for today",
-    contexts: ["selection"],
-    parentId: "addTask",
-  });
-  chrome.contextMenus.create({
-    id: "addTaskUnscheduled",
-    title: "Add unscheduled task",
-    contexts: ["selection"],
-    parentId: "addTask",
+  // Clear existing context menus before creating new ones to avoid duplicate ID errors
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "addTask",
+      title: "Add task to Marvin",
+      contexts: ["selection"],
+    });
+    chrome.contextMenus.create({
+      id: "addTaskToday",
+      title: "Add task for today",
+      contexts: ["selection"],
+      parentId: "addTask",
+    });
+    chrome.contextMenus.create({
+      id: "addTaskUnscheduled",
+      title: "Add unscheduled task",
+      contexts: ["selection"],
+      parentId: "addTask",
+    });
   });
 
   chrome.alarms.create({
