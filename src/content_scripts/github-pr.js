@@ -1034,8 +1034,8 @@ function addButtonsToNotifications() {
     button.style.cssText = `
       background: url(${logo}) no-repeat center center;
       background-size: 14px 14px;
-      width: 22px;
-      height: 22px;
+      width: 20px;
+      height: 20px;
       border: none;
       border-radius: 4px;
       cursor: pointer;
@@ -1043,10 +1043,8 @@ function addButtonsToNotifications() {
       opacity: 0.6;
       transition: opacity 0.2s, background-color 0.2s;
       flex-shrink: 0;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      vertical-align: middle;
+      display: inline-block;
+      vertical-align: text-bottom;
     `;
     button.onmouseenter = () => {
       button.style.opacity = '1';
