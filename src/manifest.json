@@ -36,6 +36,15 @@
     },
     {
       "matches": [
+        "*://app.slack.com/*",
+        "*://*.slack.com/*"
+      ],
+      "js": [
+        "./content_scripts/slack.js"
+      ]
+    },
+    {
+      "matches": [
         "<all_urls>"
       ],
       "js": [
