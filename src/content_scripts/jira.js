@@ -25,6 +25,9 @@ const SELECTORS = {
   quickAddCompactAdd: '[data-testid="issue-view-foundation.quick-add.quick-add-items-compact.add-button-dropdown--trigger"]',
   quickAddCompactApps: '[data-testid="issue-view-foundation.quick-add.quick-add-items-compact.apps-button-dropdown--trigger"]',
   quickAddCompactContainer: '[data-testid*="quick-add-items-compact"]',
+  // Breadcrumb navigation (reliable anchor for button placement)
+  breadcrumbNav: 'nav[aria-label="Work item breadcrumbs"]',
+  breadcrumbCurrentIssue: '[data-testid="issue.views.issue-base.foundation.breadcrumbs.breadcrumb-current-issue-container"]',
 
   // Board view cards
   boardCard: '[data-testid="platform-board-kit.ui.card.card"]',
@@ -408,6 +411,28 @@ function createMarvinButton(metadata, style = 'toolbar') {
     `;
     button.onmouseenter = () => { button.style.opacity = '1'; };
     button.onmouseleave = () => { button.style.opacity = '0.7'; };
+  } else if (style === 'breadcrumb') {
+    // Style for breadcrumb navigation - matches Jira's breadcrumb icons
+    button.style.cssText = `
+      background: url(${logo}) no-repeat center center;
+      background-size: 16px 16px;
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      opacity: 0.7;
+      transition: opacity 0.2s, background-color 0.2s;
+      flex-shrink: 0;
+    `;
+    button.onmouseenter = () => {
+      button.style.opacity = '1';
+      button.style.backgroundColor = 'rgba(9, 30, 66, 0.08)';
+    };
+    button.onmouseleave = () => {
+      button.style.opacity = '0.7';
+      button.style.backgroundColor = 'transparent';
+    };
   }
 
   button.onclick = (e) => {
@@ -442,90 +467,47 @@ function addButtonToIssueView() {
   // Don't add if already exists
   if (marvinButtonExists(document.body, metadata.issueKey)) return true;
 
-  const button = createMarvinButton(metadata, 'toolbar');
+  const button = createMarvinButton(metadata, 'breadcrumb');
 
-  // Strategy 1: Find compact quick-add buttons (side panel)
-  // These have data-testid like "issue-view-foundation.quick-add.quick-add-items-compact..."
-  const compactAppsButton = document.querySelector(SELECTORS.quickAddCompactApps);
-  if (compactAppsButton) {
-    // Find the parent container that holds both buttons
-    const presentationDiv = compactAppsButton.closest('[role="presentation"]');
-    if (presentationDiv && presentationDiv.parentElement) {
-      // Add a new presentation div with our button to match the structure
+  // Primary strategy: Add to breadcrumb navigation (works for both side panel and full page)
+  const breadcrumbNav = document.querySelector(SELECTORS.breadcrumbNav);
+  if (breadcrumbNav) {
+    const ol = breadcrumbNav.querySelector('ol');
+    if (ol) {
+      // Create a wrapper that matches the breadcrumb item style
       const wrapper = document.createElement('div');
-      wrapper.setAttribute('role', 'presentation');
+      wrapper.setAttribute('role', 'listitem');
+      wrapper.style.cssText = `
+        display: inline-flex;
+        align-items: center;
+        margin-left: 8px;
+      `;
       wrapper.appendChild(button);
-      presentationDiv.after(wrapper);
+      ol.appendChild(wrapper);
       return true;
     }
   }
 
-  const compactAddButton = document.querySelector(SELECTORS.quickAddCompactAdd);
-  if (compactAddButton) {
-    // Find the grandparent container (css-rf2cmq in the HTML)
-    let container = compactAddButton.closest('[role="presentation"]')?.parentElement;
-    if (container) {
-      const wrapper = document.createElement('div');
-      wrapper.setAttribute('role', 'presentation');
-      wrapper.appendChild(button);
-      container.appendChild(wrapper);
-      return true;
-    }
+  // Fallback: Find the current issue breadcrumb container and add after it
+  const currentIssueContainer = document.querySelector(SELECTORS.breadcrumbCurrentIssue);
+  if (currentIssueContainer) {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('role', 'listitem');
+    wrapper.style.cssText = `
+      display: inline-flex;
+      align-items: center;
+      margin-left: 8px;
+    `;
+    wrapper.appendChild(button);
+    currentIssueContainer.after(wrapper);
+    return true;
   }
 
-  // Strategy 2: Find the quick-add button container (full page view)
-  const quickAddContainer = document.querySelector(SELECTORS.quickAddContainer);
-  if (quickAddContainer) {
-    const parent = quickAddContainer.parentElement;
-    if (parent) {
-      parent.appendChild(button);
-      return true;
-    }
-  }
-
-  // Strategy 3: Find the quick-add button itself and insert after it
-  const quickAddButton = document.querySelector(SELECTORS.issuePanelQuickAdd) ||
-                         document.querySelector(SELECTORS.issueToolbar) ||
-                         document.querySelector('[data-testid*="quick-add"]');
-
-  if (quickAddButton) {
-    // Find the container that holds the + and gear icons
-    let container = quickAddButton.closest('[data-testid*="quick-add"]');
-    if (!container) {
-      container = quickAddButton.parentElement;
-    }
-
-    if (container && container.parentElement) {
-      // Insert after the container
-      container.after(button);
-      return true;
-    }
-  }
-
-  // Strategy 4: Find any button group below the title
+  // Last resort: Find the title and add near it
   const title = document.querySelector(SELECTORS.issueTitle) ||
                 document.querySelector(SELECTORS.issuePanelTitle) ||
                 document.querySelector('h1');
 
-  if (title) {
-    // Look for a sibling or nearby container with buttons
-    let current = title.parentElement;
-    for (let i = 0; i < 3 && current; i++) {
-      const buttonGroup = current.querySelector('button[aria-label*="Add"]') ||
-                          current.querySelector('[data-testid*="quick-add"]') ||
-                          current.querySelector('[role="group"]');
-      if (buttonGroup) {
-        const parent = buttonGroup.closest('div');
-        if (parent) {
-          parent.appendChild(button);
-          return true;
-        }
-      }
-      current = current.parentElement;
-    }
-  }
-
-  // Strategy 5: Fallback - add after the title
   if (title && title.parentElement) {
     title.parentElement.appendChild(button);
     return true;
