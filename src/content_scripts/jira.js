@@ -6,26 +6,12 @@ const logo = chrome.runtime.getURL("static/logo.png");
 
 // Jira-specific selectors (using data-testid for stability where possible)
 const SELECTORS = {
-  // Issue detail view (full page)
+  // Issue detail view (full /browse/ page)
   issueView: '[data-testid="issue.views.issue-base.foundation.summary.heading"]',
   issueKey: '[data-testid="issue.views.issue-base.foundation.breadcrumbs.current-issue.item"]',
   issueTitle: '[data-testid="issue.views.issue-base.foundation.summary.heading"]',
   issueDescription: '[data-testid="issue.views.field.rich-text.description"]',
-  issueToolbar: '[data-testid="issue.views.issue-base.foundation.quick-add.button"]',
-
-  // Issue detail panel (side panel on board view) - multiple patterns for different Jira UIs
-  issuePanel: '[data-testid="issue.views.issue-details.issue-layout"]',
-  issuePanelTitle: '[data-testid="issue.views.issue-base.foundation.summary.heading"]',
-  issuePanelQuickAdd: '[data-testid="issue.views.issue-base.foundation.quick-add.button"]',
-  issuePanelBreadcrumb: '[data-testid="issue.views.issue-base.foundation.breadcrumbs.breadcrumb-current-issue-container"]',
-  // Additional selectors for side panel - matches the compact quick-add buttons
-  sidePanelContainer: '[data-testid="issue-view-side-panel"], [role="dialog"][aria-label*="issue"], [data-testid*="issue-detail"]',
-  quickAddContainer: '[data-testid="issue.views.issue-base.foundation.quick-add.quick-add-item"]',
-  // Compact quick-add buttons (used in side panel)
-  quickAddCompactAdd: '[data-testid="issue-view-foundation.quick-add.quick-add-items-compact.add-button-dropdown--trigger"]',
-  quickAddCompactApps: '[data-testid="issue-view-foundation.quick-add.quick-add-items-compact.apps-button-dropdown--trigger"]',
-  quickAddCompactContainer: '[data-testid*="quick-add-items-compact"]',
-  // Breadcrumb navigation (reliable anchor for button placement)
+  // Breadcrumb navigation (for button placement on issue page)
   breadcrumbNav: 'nav[aria-label="Work item breadcrumbs"]',
   breadcrumbCurrentIssue: '[data-testid="issue.views.issue-base.foundation.breadcrumbs.breadcrumb-current-issue-container"]',
 
@@ -124,21 +110,11 @@ function showSuccessMessage(status) {
 */
 
 /**
- * Extracts issue key from URL
+ * Extracts issue key from URL (/browse/PROJ-123)
  */
 function getIssueKeyFromUrl() {
-  // Check for /browse/PROJ-123 pattern
   const browseMatch = window.location.href.match(/\/browse\/([A-Z][A-Z0-9]*-\d+)/i);
-  if (browseMatch) return browseMatch[1].toUpperCase();
-
-  // Check for selectedIssue in query params (board view detail panel)
-  const params = new URLSearchParams(window.location.search);
-  const selectedIssue = params.get('selectedIssue');
-  if (selectedIssue && /^[A-Z][A-Z0-9]*-\d+$/i.test(selectedIssue)) {
-    return selectedIssue.toUpperCase();
-  }
-
-  return null;
+  return browseMatch ? browseMatch[1].toUpperCase() : null;
 }
 
 /**
@@ -205,9 +181,8 @@ function getIssueSummary(element) {
     }
   }
 
-  // For issue detail view (full page or side panel)
+  // For issue detail view (/browse/ page)
   const titleElement = document.querySelector(SELECTORS.issueTitle) ||
-                       document.querySelector(SELECTORS.issuePanelTitle) ||
                        document.querySelector(SELECTORS.issueTitleAlt) ||
                        document.querySelector('h1');
 
@@ -458,7 +433,7 @@ function marvinButtonExists(container, issueKey) {
 }
 
 /**
- * Adds Marvin button to issue detail view (both full page and side panel)
+ * Adds Marvin button to issue detail view (/browse/ page)
  */
 function addButtonToIssueView() {
   const metadata = getJiraMetadata();
@@ -469,47 +444,28 @@ function addButtonToIssueView() {
 
   const button = createMarvinButton(metadata, 'breadcrumb');
 
-  // Primary strategy: Add to breadcrumb navigation (works for both side panel and full page)
+  // Primary: Add to breadcrumb navigation
   const breadcrumbNav = document.querySelector(SELECTORS.breadcrumbNav);
   if (breadcrumbNav) {
     const ol = breadcrumbNav.querySelector('ol');
     if (ol) {
-      // Create a wrapper that matches the breadcrumb item style
       const wrapper = document.createElement('div');
       wrapper.setAttribute('role', 'listitem');
-      wrapper.style.cssText = `
-        display: inline-flex;
-        align-items: center;
-        margin-left: 8px;
-      `;
+      wrapper.style.cssText = 'display: inline-flex; align-items: center; margin-left: 8px;';
       wrapper.appendChild(button);
       ol.appendChild(wrapper);
       return true;
     }
   }
 
-  // Fallback: Find the current issue breadcrumb container and add after it
+  // Fallback: Add after current issue breadcrumb
   const currentIssueContainer = document.querySelector(SELECTORS.breadcrumbCurrentIssue);
   if (currentIssueContainer) {
     const wrapper = document.createElement('div');
     wrapper.setAttribute('role', 'listitem');
-    wrapper.style.cssText = `
-      display: inline-flex;
-      align-items: center;
-      margin-left: 8px;
-    `;
+    wrapper.style.cssText = 'display: inline-flex; align-items: center; margin-left: 8px;';
     wrapper.appendChild(button);
     currentIssueContainer.after(wrapper);
-    return true;
-  }
-
-  // Last resort: Find the title and add near it
-  const title = document.querySelector(SELECTORS.issueTitle) ||
-                document.querySelector(SELECTORS.issuePanelTitle) ||
-                document.querySelector('h1');
-
-  if (title && title.parentElement) {
-    title.parentElement.appendChild(button);
     return true;
   }
 
@@ -646,8 +602,6 @@ let displayInBoardView = true;
 let displayInListView = true;
 let isInitialized = false;
 let observer = null;
-let lastUrl = '';
-let retryTimeout = null;
 
 /**
  * Determines current view type and adds appropriate buttons
@@ -656,194 +610,61 @@ function addButtonsToCurrentView() {
   const url = window.location.href;
   let added = false;
 
-  // Issue detail view (browse page)
+  // Issue detail view (direct /browse/ page only)
   if (url.includes('/browse/') && displayInIssueView) {
     added = addButtonToIssueView() || added;
   }
 
-  // Board view - handle both cards and side panel
+  // Board view - cards only
   if ((url.includes('/board') || url.includes('/boards/')) && displayInBoardView) {
     added = addButtonsToBoardCards() || added;
-
-    // Also check for side panel (selectedIssue query param)
-    if (url.includes('selectedIssue=') && displayInIssueView) {
-      added = addButtonToIssueView() || added;
-    }
   }
 
   // Backlog/list view
   if (url.includes('/backlog') && displayInListView) {
     added = addButtonsToListView() || added;
-
-    // Also check for side panel in backlog view
-    if (url.includes('selectedIssue=') && displayInIssueView) {
-      added = addButtonToIssueView() || added;
-    }
   }
 
   return added;
 }
 
 /**
- * Throttle function - ensures function is called at most once per wait period
+ * Debounce function
  */
-function throttle(func, wait) {
-  let lastTime = 0;
-  let timeout = null;
+function debounce(func, wait) {
+  let timeout;
   return function executedFunction(...args) {
-    const now = Date.now();
-    const remaining = wait - (now - lastTime);
-
-    if (remaining <= 0) {
-      if (timeout) {
-        clearTimeout(timeout);
-        timeout = null;
-      }
-      lastTime = now;
-      func(...args);
-    } else if (!timeout) {
-      timeout = setTimeout(() => {
-        lastTime = Date.now();
-        timeout = null;
-        func(...args);
-      }, remaining);
-    }
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
   };
 }
 
-const throttledAddButtons = throttle(addButtonsToCurrentView, 200);
+const debouncedAddButtons = debounce(addButtonsToCurrentView, 250);
 
 /**
- * Check if we need to add buttons for side panel or new cards
- * This is called when specific elements are detected
- */
-function checkForNewContent() {
-  const url = window.location.href;
-
-  // Check if side panel should have a button
-  if (url.includes('selectedIssue=') && displayInIssueView) {
-    const breadcrumb = document.querySelector(SELECTORS.breadcrumbNav);
-    const issueKey = getIssueKeyFromUrl();
-    if (breadcrumb && issueKey && !marvinButtonExists(document.body, issueKey)) {
-      addButtonToIssueView();
-    }
-  }
-
-  // Check for new board cards without buttons
-  if ((url.includes('/board') || url.includes('/boards/')) && displayInBoardView) {
-    const cards = document.querySelectorAll(SELECTORS.boardCard);
-    cards.forEach(card => {
-      const metadata = getJiraMetadata(card);
-      if (metadata && !marvinButtonExists(card, metadata.issueKey)) {
-        // Card needs a button - trigger full check
-        throttledAddButtons();
-      }
-    });
-  }
-}
-
-/**
- * Handles DOM mutations - watches for specific elements
+ * Handles DOM mutations - watches for new board cards
  */
 function handleMutation(mutationsList) {
-  let shouldCheck = false;
-
   for (const mutation of mutationsList) {
     if (mutation.type !== 'childList' || mutation.addedNodes.length === 0) continue;
 
     for (const node of mutation.addedNodes) {
       if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-      // Check if this is a breadcrumb nav (side panel loaded)
-      if (node.matches?.(SELECTORS.breadcrumbNav) ||
-          node.querySelector?.(SELECTORS.breadcrumbNav)) {
-        shouldCheck = true;
-        break;
-      }
-
-      // Check if this is a board card
+      // Check if this is or contains a board card
       if (node.matches?.(SELECTORS.boardCard) ||
           node.querySelector?.(SELECTORS.boardCard)) {
-        shouldCheck = true;
-        break;
+        debouncedAddButtons();
+        return;
       }
 
-      // Check if this contains issue-related content
-      if (node.querySelector?.('[data-testid*="issue"]') ||
-          node.querySelector?.('[data-testid*="breadcrumb"]')) {
-        shouldCheck = true;
-        break;
+      // Check if this is or contains issue content (for /browse/ pages)
+      if (node.matches?.(SELECTORS.breadcrumbNav) ||
+          node.querySelector?.(SELECTORS.breadcrumbNav)) {
+        debouncedAddButtons();
+        return;
       }
     }
-
-    if (shouldCheck) break;
-  }
-
-  if (shouldCheck) {
-    // Small delay to let content fully render
-    setTimeout(checkForNewContent, 100);
-  }
-}
-
-/**
- * Watch for URL changes (SPA navigation)
- */
-function setupUrlWatcher() {
-  // Override pushState and replaceState to detect SPA navigation
-  const originalPushState = history.pushState;
-  const originalReplaceState = history.replaceState;
-
-  history.pushState = function(...args) {
-    originalPushState.apply(this, args);
-    handleUrlChange();
-  };
-
-  history.replaceState = function(...args) {
-    originalReplaceState.apply(this, args);
-    handleUrlChange();
-  };
-
-  // Also listen for popstate (back/forward navigation)
-  window.addEventListener('popstate', handleUrlChange);
-}
-
-/**
- * Handle URL changes
- */
-function handleUrlChange() {
-  const currentUrl = window.location.href;
-  if (currentUrl === lastUrl) return;
-
-  lastUrl = currentUrl;
-
-  // Clear any pending retry
-  if (retryTimeout) {
-    clearTimeout(retryTimeout);
-    retryTimeout = null;
-  }
-
-  // Try to add buttons immediately
-  addButtonsToCurrentView();
-
-  // If URL has selectedIssue, retry a few times as content loads
-  if (currentUrl.includes('selectedIssue=')) {
-    let retryCount = 0;
-    const maxRetries = 10;
-
-    const retryAddButton = () => {
-      retryCount++;
-      const issueKey = getIssueKeyFromUrl();
-
-      if (issueKey && !marvinButtonExists(document.body, issueKey)) {
-        const added = addButtonToIssueView();
-
-        if (!added && retryCount < maxRetries) {
-          retryTimeout = setTimeout(retryAddButton, 300);
-        }
-      }
-    };
-
-    retryTimeout = setTimeout(retryAddButton, 300);
   }
 }
 
@@ -876,11 +697,8 @@ async function init() {
 
   // Wait for Jira to load
   if (!isJiraLoaded() && !isInitialized) {
-    return; // Wait for Jira to load
+    return;
   }
-
-  // Track current URL
-  lastUrl = window.location.href;
 
   // Add buttons to current view
   addButtonsToCurrentView();
@@ -888,10 +706,7 @@ async function init() {
   if (!isInitialized) {
     isInitialized = true;
 
-    // Set up URL watcher for SPA navigation (pushState/replaceState)
-    setupUrlWatcher();
-
-    // Set up MutationObserver for dynamic content
+    // Set up MutationObserver for dynamic content (new cards, page changes)
     observer = new MutationObserver(handleMutation);
     observer.observe(document.body, {
       childList: true,
