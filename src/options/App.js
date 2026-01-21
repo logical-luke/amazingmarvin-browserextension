@@ -14,6 +14,7 @@ const App = () => {
     { name: "gmail", text: "Gmail Addon" },
     { name: "jira", text: "Jira Addon" },
     { name: "slack", text: "Slack Addon" },
+    { name: "github", text: "GitHub Addon" },
   ];
 
   return (

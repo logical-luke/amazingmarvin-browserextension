@@ -45,6 +45,18 @@
     },
     {
       "matches": [
+        "*://github.com/*/*/pull/*",
+        "*://github.com/pulls",
+        "*://github.com/pulls/*",
+        "*://github.com/*/*/pulls",
+        "*://github.com/*/*/pulls/*"
+      ],
+      "js": [
+        "./content_scripts/github-pr.js"
+      ]
+    },
+    {
+      "matches": [
         "<all_urls>"
       ],
       "js": [
