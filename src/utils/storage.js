@@ -220,3 +220,25 @@ export function setStoredJiraSettings(settings) {
     });
   });
 }
+
+export function getStoredSlackSettings() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["slackSettings"]).then((result) => {
+      resolve(result.slackSettings || {
+        enabled: true,
+        scheduleForToday: true,
+        showInChannels: true,
+        showInDMs: true,
+        showInThreads: true,
+      });
+    });
+  });
+}
+
+export function setStoredSlackSettings(settings) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ slackSettings: settings }).then(() => {
+      resolve();
+    });
+  });
+}

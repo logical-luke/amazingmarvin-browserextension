@@ -13,6 +13,7 @@ const App = () => {
     { name: "sync", text: "Sync" },
     { name: "gmail", text: "Gmail Addon" },
     { name: "jira", text: "Jira Addon" },
+    { name: "slack", text: "Slack Addon" },
   ];
 
   return (
