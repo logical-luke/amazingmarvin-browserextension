@@ -2,6 +2,8 @@ import { getStoredSlackSettings, getStoredToken } from "../utils/storage";
 import { addTask } from "../utils/api";
 import { formatDate } from "../utils/dates";
 
+const logo = chrome.runtime.getURL("static/logo.png");
+
 // Slack-specific selectors (Slack's DOM changes frequently, multiple fallbacks)
 const SELECTORS = {
   // Virtual list containers
@@ -338,13 +340,14 @@ function createMarvinButton(metadata) {
   button.setAttribute("data-sk", "tooltip_parent");
   button.setAttribute("type", "button");
 
-  // Create SVG icon matching Slack's style (checkmark/task icon)
-  // Using Slack's viewBox="0 0 20 20" standard
-  button.innerHTML = `
-    <svg data-qa="marvin-icon" aria-hidden="true" viewBox="0 0 20 20" class="">
-      <path fill="currentColor" fill-rule="evenodd" d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16m3.78 5.97a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0l-2.25-2.25a.75.75 0 1 1 1.06-1.06l1.72 1.72 3.72-3.72a.75.75 0 0 1 1.06 0" clip-rule="evenodd"></path>
-    </svg>
-  `;
+  // Create img element with Marvin logo, sized to match Slack's icons
+  const img = document.createElement("img");
+  img.src = logo;
+  img.alt = "Add to Marvin";
+  img.setAttribute("aria-hidden", "true");
+  img.style.cssText = "width: 18px; height: 18px; display: block;";
+
+  button.appendChild(img);
 
   button.onclick = (e) => {
     e.preventDefault();
