@@ -50,14 +50,16 @@ marvinSuccessMessage.classList.add(
 );
 
 function changeSuccessMessageClasses(successMessage) {
-  marvinSuccessMessage.textContent =
-    successMessage === "success"
-      ? "Task successfully added to Marvin!"
-      : "Failed to add Task to Marvin!";
-
-  if (successMessage === "noToken") {
-    marvinSuccessMessage.textContent +=
-      " Please add your Marvin API token by clicking on the extension icon in the browser's toolbar.";
+  if (successMessage === "success") {
+    marvinSuccessMessage.textContent = "Task successfully added to Marvin!";
+  } else if (successMessage === "noToken") {
+    marvinSuccessMessage.textContent =
+      "Failed to add Task to Marvin! Please add your Marvin API token by clicking on the extension icon in the browser's toolbar.";
+  } else if (successMessage === "reload") {
+    marvinSuccessMessage.textContent =
+      "Extension was updated. Please reload this page to continue using Marvin.";
+  } else {
+    marvinSuccessMessage.textContent = "Failed to add Task to Marvin!";
   }
 
   marvinSuccessMessage.classList.remove("marvinSuccessMessageHidden");
@@ -67,8 +69,20 @@ function changeSuccessMessageClasses(successMessage) {
       marvinSuccessMessage.classList.remove("marvinSuccessMessageVisible");
       marvinSuccessMessage.classList.add("marvinSuccessMessageHidden");
     },
-    successMessage === "noToken" ? 6000 : 2000
+    successMessage === "noToken" || successMessage === "reload" ? 6000 : 2000
   );
+}
+
+/**
+ * Checks if extension context is still valid
+ */
+function isExtensionContextValid() {
+  try {
+    chrome.runtime.getURL("");
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function getTableRows() {
@@ -125,7 +139,21 @@ function isNotMarvinButton(element) {
 }
 
 async function handleMarvinButtonClick(emailData) {
-  let token = await getStoredToken();
+  if (!isExtensionContextValid()) {
+    changeSuccessMessageClasses("reload");
+    return;
+  }
+
+  let token;
+  try {
+    token = await getStoredToken();
+  } catch (error) {
+    if (error.message?.includes("Extension context invalidated")) {
+      changeSuccessMessageClasses("reload");
+      return;
+    }
+    throw error;
+  }
 
   if (!token) {
     changeSuccessMessageClasses("noToken");
@@ -143,13 +171,21 @@ async function handleMarvinButtonClick(emailData) {
 
   if (scheduleForToday) data.day = formatDate(new Date());
 
-  addTask(data).then((message) => {
+  try {
+    const message = await addTask(data);
     if (message === "success") {
       changeSuccessMessageClasses("success");
     } else {
       changeSuccessMessageClasses("fail");
     }
-  });
+  } catch (error) {
+    console.error("Failed to add task to Marvin:", error);
+    if (error.message?.includes("Extension context invalidated")) {
+      changeSuccessMessageClasses("reload");
+    } else {
+      changeSuccessMessageClasses("fail");
+    }
+  }
 }
 
 function createTableMarvinButton(emailData) {
