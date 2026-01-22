@@ -353,7 +353,13 @@ chrome.runtime.onMessage.addListener(async function (
                 sendResponse({ success: true, context });
               }
             } else {
-              sendResponse({ success: false, context: null });
+              // For unsupported platforms, return a generic context
+              // This enables AI suggestions on any page
+              const context = createTaskContext(tabUrl, {
+                title: tabs[0].title,
+                url: tabUrl,
+              }, settings);
+              sendResponse({ success: true, context });
             }
           } else {
             sendResponse({ success: false, context: null });
@@ -384,16 +390,21 @@ chrome.runtime.onMessage.addListener(async function (
 
   if (request.message === "getAISuggestions") {
     // Popup is requesting AI-powered suggestions
+    console.log("Background: Received getAISuggestions request", request.context);
     (async () => {
       try {
         const aiSettings = await getStoredAISuggestionsSettings();
+        console.log("Background: AI settings", aiSettings);
         if (!aiSettings.enabled || !aiSettings.apiKey) {
+          console.log("Background: AI disabled or no API key");
           sendResponse({ success: false, reason: "disabled" });
           return;
         }
 
         const userLabels = await getStoredLabels();
+        console.log("Background: Calling getAISuggestions with labels count:", userLabels?.length);
         const suggestions = await getAISuggestions(request.context, userLabels);
+        console.log("Background: AI suggestions result:", suggestions);
 
         if (suggestions) {
           sendResponse({ success: true, suggestions });

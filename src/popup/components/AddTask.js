@@ -138,59 +138,92 @@ const AddTask = ({ setOnboarded }) => {
       const settings = await getStoredSmartAutocompleteSettings();
       setSmartAutocompleteSettings(settings);
 
-      if (!settings.enabled) return;
-
       // Request context from background script
+      console.log("Requesting task context...");
       chrome.runtime.sendMessage(
         { message: "getTaskContext" },
         async (response) => {
+          console.log("Task context response:", response);
           if (chrome.runtime.lastError) {
             console.log("Smart context not available:", chrome.runtime.lastError);
-            return;
           }
 
+          let contextForAI = null;
+
+          // Process platform-specific context (template suggestions)
+          // Only apply template suggestions if smart autocomplete is enabled
           if (response?.success && response.context) {
             const context = response.context;
             setTaskContext(context);
+            contextForAI = context;
 
-            // Set template-based suggested title first (as fallback)
-            if (settings.showSuggestedTitle && context.suggestedTitleWithLink) {
-              setSuggestedTitle(context.suggestedTitleWithLink);
+            // Only apply template-based suggestions if smart autocomplete is enabled
+            if (settings.enabled) {
+              // Set template-based suggested title first (as fallback)
+              if (settings.showSuggestedTitle && context.suggestedTitleWithLink) {
+                setSuggestedTitle(context.suggestedTitleWithLink);
 
-              // Auto-fill title if enabled and no saved title
-              if (settings.autoFillTitle && !localStorage.savedTitle) {
-                setTaskTitle(context.suggestedTitleWithLink);
-                setContextApplied(true);
+                // Auto-fill title if enabled and no saved title
+                if (settings.autoFillTitle && !localStorage.savedTitle) {
+                  setTaskTitle(context.suggestedTitleWithLink);
+                  setContextApplied(true);
+                }
+              }
+
+              // Set suggested time estimate
+              if (settings.showTimeEstimate && context.suggestedEstimate) {
+                setSuggestedTimeEstimate(context.suggestedEstimate);
+
+                // Auto-apply time estimate if enabled
+                if (settings.autoApplyTimeEstimate) {
+                  setTimeEstimate(context.suggestedEstimate);
+                }
+              }
+
+              // Get label suggestions
+              if (settings.showLabelSuggestions && context.labelKeywords?.length > 0) {
+                const userLabels = await getStoredLabels();
+                if (userLabels) {
+                  const suggestions = suggestLabels(userLabels, context.labelKeywords);
+                  setSuggestedLabels(suggestions);
+                }
+              }
+            }
+          }
+
+          // AI suggestions - ALWAYS try if enabled, independent of smart autocomplete
+          const aiSettings = await getStoredAISuggestionsSettings();
+          console.log("AI Settings:", aiSettings);
+          if (aiSettings.enabled && aiSettings.apiKey) {
+            // If no context available, build generic context from current tab
+            if (!contextForAI) {
+              try {
+                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                if (tab) {
+                  contextForAI = {
+                    platform: 'generic',
+                    action: 'generic',
+                    templateKey: 'generic',
+                    sourceUrl: tab.url,
+                    metadata: {
+                      title: tab.title,
+                      url: tab.url,
+                    },
+                  };
+                }
+              } catch (err) {
+                console.log("Could not get tab info for AI context:", err);
               }
             }
 
-            // Set suggested time estimate
-            if (settings.showTimeEstimate && context.suggestedEstimate) {
-              setSuggestedTimeEstimate(context.suggestedEstimate);
-
-              // Auto-apply time estimate if enabled
-              if (settings.autoApplyTimeEstimate) {
-                setTimeEstimate(context.suggestedEstimate);
-              }
-            }
-
-            // Get label suggestions
-            if (settings.showLabelSuggestions && context.labelKeywords?.length > 0) {
-              const userLabels = await getStoredLabels();
-              if (userLabels) {
-                const suggestions = suggestLabels(userLabels, context.labelKeywords);
-                setSuggestedLabels(suggestions);
-              }
-            }
-
-            // Now try to get AI suggestions if enabled
-            const aiSettings = await getStoredAISuggestionsSettings();
-            if (aiSettings.enabled && aiSettings.apiKey) {
+            if (contextForAI) {
+              console.log("Requesting AI suggestions with context:", contextForAI);
               setAILoading(true);
               chrome.runtime.sendMessage(
-                { message: "getAISuggestions", context },
+                { message: "getAISuggestions", context: contextForAI },
                 (aiResponse) => {
                   setAILoading(false);
+                  console.log("AI Response:", aiResponse);
                   if (chrome.runtime.lastError) {
                     console.log("AI suggestions not available:", chrome.runtime.lastError);
                     return;
@@ -202,7 +235,7 @@ const AddTask = ({ setOnboarded }) => {
 
                     // Override template suggestions with AI suggestions if available
                     if (aiSugg.title) {
-                      const url = context.metadata?.url || context.metadata?.prUrl || context.sourceUrl;
+                      const url = contextForAI.metadata?.url || contextForAI.metadata?.prUrl || contextForAI.sourceUrl;
                       const aiTitle = url ? `[${aiSugg.title}](${url})` : aiSugg.title;
                       setSuggestedTitle(aiTitle);
 

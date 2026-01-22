@@ -81,12 +81,26 @@ function isCacheValid(cachedEntry, ttl) {
 function buildPrompt(context, userLabels) {
   const labelNames = userLabels?.map(l => l.title).join(', ') || 'None available';
 
+  // Extract the best available title/description
+  const pageTitle = context.metadata?.title || context.metadata?.prTitle || context.metadata?.summary || 'Unknown';
+  const pageUrl = context.sourceUrl || context.metadata?.url || '';
+  const isGenericPage = context.platform === 'generic' || !context.platform;
+
+  // Build context description based on what's available
+  let contextDescription = '';
+  if (isGenericPage) {
+    contextDescription = `This is a generic web page. Use the page title to infer what task the user might want to create.`;
+  } else {
+    contextDescription = `Additional context: ${JSON.stringify(context.metadata || {}).substring(0, 500)}`;
+  }
+
   return `You are helping create a task from web content. Respond with JSON only, no markdown.
 
-Source platform: ${context.platform || 'unknown'}
+Source platform: ${context.platform || 'generic'}
 Content type: ${context.action || 'generic'}
-Page title: ${context.metadata?.title || context.metadata?.prTitle || context.metadata?.summary || 'Unknown'}
-Additional context: ${JSON.stringify(context.metadata || {}).substring(0, 500)}
+Page title: ${pageTitle}
+Page URL: ${pageUrl}
+${contextDescription}
 
 Available labels to choose from: ${labelNames}
 
@@ -100,10 +114,11 @@ Return a JSON object with these exact fields:
 }
 
 Rules:
-- Title must start with an action verb (Review, Fix, Respond, Complete, etc.)
+- Title must start with an action verb (Review, Read, Complete, Check, Follow up on, etc.)
 - Only suggest labels from the available list
 - Time estimate should be realistic (5-120 minutes typically)
-- Priority: "high" for urgent/blocking, "medium" for important, "low" for nice-to-have, "none" for routine`;
+- Priority: "high" for urgent/blocking, "medium" for important, "low" for nice-to-have, "none" for routine
+- For generic web pages, infer the task from the page title (e.g., "Read documentation", "Review article", "Complete tutorial")`;
 }
 
 /**
