@@ -23,10 +23,10 @@ export const TITLE_TEMPLATES = {
   'github-pr': 'Check PR #{number}: {title}',
 
   // Jira contexts - all start with action verbs
-  'jira-task': 'Complete {key}: {summary}',
+  'jira-task': 'Implement {key}: {summary}',
   'jira-bug': 'Fix {key}: {summary}',
   'jira-story': 'Implement {key}: {summary}',
-  'jira-epic': 'Complete {key}: {summary}',
+  'jira-epic': 'Implement {key}: {summary}',
 
   // Slack contexts - action verbs, no "Re:"
   'slack-reply': 'Respond to [{channel}] {messagePreview}',
