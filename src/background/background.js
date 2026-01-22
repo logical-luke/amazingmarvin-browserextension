@@ -138,6 +138,8 @@ chrome.runtime.onInstalled.addListener(() => {
     if (!settings || Object.keys(settings).length === 0) {
       setStoredAISuggestionsSettings({
         enabled: false,
+        provider: 'anthropic',
+        model: 'claude-3-haiku-20240307',
         apiKey: '',
         showTokenUsage: false,
         cacheEnabled: true,

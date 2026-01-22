@@ -325,6 +325,8 @@ export function getStoredAISuggestionsSettings() {
     chrome.storage.local.get(["aiSuggestionsSettings"]).then((result) => {
       resolve(result.aiSuggestionsSettings || {
         enabled: false,
+        provider: 'anthropic',
+        model: 'claude-3-haiku-20240307',
         apiKey: '',
         showTokenUsage: false,
         cacheEnabled: true,
