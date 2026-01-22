@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { BsLightbulb } from "react-icons/bs";
 
-const AddTaskLabelsDropdown = ({ allLabels, labels, checkLabel }) => {
+const AddTaskLabelsDropdown = ({
+  allLabels,
+  labels,
+  checkLabel,
+  suggestedLabels,
+}) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredLabels, setFilteredLabels] = useState(allLabels);
@@ -34,6 +40,14 @@ const AddTaskLabelsDropdown = ({ allLabels, labels, checkLabel }) => {
       allLabels.filter((label) =>
         label.title.toLowerCase().includes(query.toLowerCase())
       )
+    );
+  };
+
+  // Check if a label is in the suggested list
+  const isSuggestedLabel = (labelId) => {
+    return (
+      suggestedLabels &&
+      suggestedLabels.some((sl) => sl._id === labelId)
     );
   };
 
@@ -118,9 +132,16 @@ const AddTaskLabelsDropdown = ({ allLabels, labels, checkLabel }) => {
 
             {filteredLabels.length > 0 &&
               filteredLabels.map((label) => {
+                const isSuggested = isSuggestedLabel(label._id);
                 return (
                   <li key={label._id}>
-                    <div className="flex items-center p-2 rounded hover:bg-gray-100">
+                    <div
+                      className={`flex items-center p-2 rounded hover:bg-gray-100 ${
+                        isSuggested && !label.selected
+                          ? "bg-gradient-to-r from-[#26d6c4]/10 to-[#10b1d3]/10"
+                          : ""
+                      }`}
+                    >
                       <input
                         checked={label.selected}
                         onChange={() => checkLabel(label)}
@@ -129,9 +150,16 @@ const AddTaskLabelsDropdown = ({ allLabels, labels, checkLabel }) => {
                       />
                       <label
                         onClick={() => checkLabel(label)}
-                        className="w-full ml-2 text-sm font-medium text-gray-900 rounded"
+                        className="w-full ml-2 text-sm font-medium text-gray-900 rounded flex items-center gap-1"
                       >
                         {label.title}
+                        {isSuggested && !label.selected && (
+                          <BsLightbulb
+                            size={12}
+                            className="text-[#1CC5CB]"
+                            title="Suggested label"
+                          />
+                        )}
                       </label>
                     </div>
                   </li>

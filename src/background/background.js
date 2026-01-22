@@ -11,7 +11,15 @@ import {
   getStoredGeneralSettings,
   setStoredGeneralSettings,
   getStoredBadgeSettings,
+  setStoredSmartAutocompleteSettings,
+  getStoredSmartAutocompleteSettings,
+  setStoredTaskContext,
+  clearStoredTaskContext,
 } from "../utils/storage";
+import {
+  createTaskContext,
+  detectPlatform,
+} from "../utils/taskContext";
 import { getLabels, getCategories } from "../utils/api";
 import { formatDate } from "../utils/dates";
 import { clearBadge, setBadge } from "../utils/badge";
@@ -103,6 +111,23 @@ chrome.runtime.onInstalled.addListener(() => {
       setStoredBadgeSettings({
         displayBadge: true,
         backgroundColor: "#1CC5CB",
+      });
+    }
+  });
+  getStoredSmartAutocompleteSettings().then((settings) => {
+    if (!settings || Object.keys(settings).length === 0) {
+      setStoredSmartAutocompleteSettings({
+        enabled: true,
+        showSuggestedTitle: true,
+        autoFillTitle: false,
+        showTimeEstimate: true,
+        autoApplyTimeEstimate: false,
+        showLabelSuggestions: true,
+        showPrioritySuggestions: true,
+        showQuickActions: true,
+        rememberChoices: true,
+        customEstimates: {},
+        userPreferences: {},
       });
     }
   });
@@ -233,5 +258,111 @@ chrome.runtime.onMessage.addListener(async function (
     } else {
       clearBadge();
     }
+  }
+
+  // Smart context detection messages
+  if (request.message === "setTaskContext") {
+    // Content script is sending context metadata for the popup
+    const settings = await getStoredSmartAutocompleteSettings();
+    if (settings.enabled) {
+      const context = createTaskContext(
+        request.sourceUrl,
+        request.metadata,
+        settings
+      );
+      await setStoredTaskContext(context);
+      sendResponse({ success: true, context });
+    } else {
+      sendResponse({ success: false, reason: "disabled" });
+    }
+    return true; // Keep message channel open for async response
+  }
+
+  if (request.message === "clearTaskContext") {
+    await clearStoredTaskContext();
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (request.message === "getTaskContext") {
+    // Popup is requesting the current context
+    const settings = await getStoredSmartAutocompleteSettings();
+    if (!settings.enabled) {
+      sendResponse({ success: false, context: null, reason: "disabled" });
+      return true;
+    }
+
+    // If no context is stored, try to detect from current tab
+    chrome.storage.local.get(["currentTaskContext"], async (result) => {
+      if (result.currentTaskContext) {
+        sendResponse({ success: true, context: result.currentTaskContext });
+      } else {
+        // Try to get context from the active tab's content script
+        chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+          if (tabs[0]) {
+            const tabUrl = tabs[0].url;
+            const platform = detectPlatform(tabUrl);
+
+            if (platform) {
+              // Try to get rich context from content script first
+              try {
+                chrome.tabs.sendMessage(
+                  tabs[0].id,
+                  { message: "getPageContext" },
+                  async (response) => {
+                    if (chrome.runtime.lastError || !response?.context) {
+                      // Fallback to basic context from URL
+                      const context = createTaskContext(tabUrl, {
+                        title: tabs[0].title,
+                        url: tabUrl,
+                      }, settings);
+                      sendResponse({ success: true, context });
+                    } else {
+                      // Create context from content script response
+                      const context = createTaskContext(
+                        tabUrl,
+                        response.context,
+                        settings
+                      );
+                      sendResponse({ success: true, context });
+                    }
+                  }
+                );
+              } catch (err) {
+                // Fallback to basic context
+                const context = createTaskContext(tabUrl, {
+                  title: tabs[0].title,
+                  url: tabUrl,
+                }, settings);
+                sendResponse({ success: true, context });
+              }
+            } else {
+              sendResponse({ success: false, context: null });
+            }
+          } else {
+            sendResponse({ success: false, context: null });
+          }
+        });
+      }
+    });
+    return true; // Keep message channel open for async response
+  }
+
+  if (request.message === "updateSmartAutocompletePreference") {
+    // User made a choice, remember it if enabled
+    const settings = await getStoredSmartAutocompleteSettings();
+    if (settings.rememberChoices) {
+      const { platform, action, preference } = request;
+      if (!settings.userPreferences) {
+        settings.userPreferences = {};
+      }
+      if (!settings.userPreferences[platform]) {
+        settings.userPreferences[platform] = {};
+      }
+      settings.userPreferences[platform][action] = preference;
+      await setStoredSmartAutocompleteSettings(settings);
+    }
+    sendResponse({ success: true });
+    return true;
   }
 });

@@ -1,9 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { BsX } from "react-icons/bs";
+import { BsX, BsLightbulb } from "react-icons/bs";
 import { getStoredCategories, getStoredLabels } from "../../utils/storage";
 import AutocompleteDropdown from "./AutocompleteDropdown";
 
-const AddTaskTitle = ({ title, setTaskTitle, onAutocompleteStateChange }) => {
+const AddTaskTitle = ({
+  title,
+  setTaskTitle,
+  onAutocompleteStateChange,
+  suggestedTitle,
+  taskContext,
+  onApplySuggestion,
+}) => {
   const inputRef = useRef(null);
 
   const [categories, setCategories] = useState([]);
@@ -200,12 +207,47 @@ const AddTaskTitle = ({ title, setTaskTitle, onAutocompleteStateChange }) => {
     ? getSuggestions(autocomplete.triggerType, autocomplete.query)
     : [];
 
+  // Check if there's a suggested title that differs from the current title
+  const hasSuggestion = suggestedTitle && suggestedTitle !== title && !title;
+  const showSuggestionIndicator = suggestedTitle && title !== suggestedTitle;
+
+  // Get platform label for tooltip
+  const getPlatformLabel = () => {
+    if (!taskContext?.platform) return "page";
+    const labels = {
+      github: "GitHub",
+      jira: "Jira",
+      slack: "Slack",
+      gmail: "Gmail",
+    };
+    return labels[taskContext.platform] || taskContext.platform;
+  };
+
+  // Apply the suggested title
+  const applySuggestedTitle = useCallback(() => {
+    if (suggestedTitle && onApplySuggestion) {
+      onApplySuggestion(suggestedTitle);
+    }
+  }, [suggestedTitle, onApplySuggestion]);
+
   return (
     <div>
       <div className="flex flex-row items-center gap-0.5">
         <label className="label">
           <span className="label-text text-neutral">Task title</span>
         </label>
+        {showSuggestionIndicator && (
+          <button
+            type="button"
+            className="flex items-center gap-1 px-2 py-0.5 text-xs bg-gradient-to-r from-[#26d6c4] to-[#10b1d3] text-white rounded-full hover:opacity-90 transition-opacity"
+            onClick={applySuggestedTitle}
+            data-hov={`Use suggested title from ${getPlatformLabel()}`}
+            data-pos="T"
+          >
+            <BsLightbulb size={12} />
+            <span>Suggestion</span>
+          </button>
+        )}
       </div>
       <div className="relative w-full">
         <input
@@ -215,8 +257,10 @@ const AddTaskTitle = ({ title, setTaskTitle, onAutocompleteStateChange }) => {
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
-          placeholder="Enter task title"
-          className="input input-bordered input-primary w-full text-base pr-[30px]"
+          placeholder={hasSuggestion ? suggestedTitle : "Enter task title"}
+          className={`input input-bordered input-primary w-full text-base pr-[30px] ${
+            hasSuggestion ? "placeholder:text-gray-400 placeholder:italic" : ""
+          }`}
           autoFocus={!title}
           onFocus={select}
           autoComplete="off"
@@ -242,6 +286,24 @@ const AddTaskTitle = ({ title, setTaskTitle, onAutocompleteStateChange }) => {
           visible={autocomplete.visible}
         />
       </div>
+
+      {/* Show suggestion preview when input is empty and there's a suggestion */}
+      {hasSuggestion && (
+        <div className="mt-1 text-xs text-gray-500">
+          <span className="flex items-center gap-1">
+            <BsLightbulb size={10} className="text-[#1CC5CB]" />
+            Click the placeholder or{" "}
+            <button
+              type="button"
+              className="text-[#1CC5CB] hover:underline"
+              onClick={applySuggestedTitle}
+            >
+              click here
+            </button>{" "}
+            to use suggested title
+          </span>
+        </div>
+      )}
     </div>
   );
 };

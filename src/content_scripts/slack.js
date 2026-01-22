@@ -583,3 +583,43 @@ const loopInterval = setInterval(init, 1000);
 if (document.readyState === "complete" || document.readyState === "interactive") {
   init();
 }
+
+/**
+ * Message listener for popup context requests
+ */
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.message === "getPageContext") {
+    // Gather context from the current page for smart autocomplete
+    const channelName = getChannelName();
+    const isDM =
+      channelName.toLowerCase().includes("direct message") ||
+      channelName.match(/^[a-z]+, [a-z]+/i);
+
+    // Try to get the most recent message for context
+    const messages = document.querySelectorAll(SELECTORS.messageContainer);
+    let messageMetadata = null;
+
+    if (messages.length > 0) {
+      // Get the last visible message
+      const lastMessage = messages[messages.length - 1];
+      messageMetadata = getSlackMessageMetadata(lastMessage);
+    }
+
+    sendResponse({
+      context: {
+        type: "slack-message",
+        platform: "slack",
+        channelName,
+        isDM,
+        isThread: false,
+        senderName: messageMetadata?.senderName,
+        messageText: messageMetadata?.messageText,
+        messagePreview: messageMetadata?.messageText
+          ? messageMetadata.messageText.substring(0, 50)
+          : "",
+        url: window.location.href,
+      },
+    });
+    return true;
+  }
+});

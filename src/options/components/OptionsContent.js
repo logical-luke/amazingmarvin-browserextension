@@ -6,6 +6,7 @@ import OptionsContentGmail from "./OptionsContentGmail";
 import OptionsContentJira from "./OptionsContentJira";
 import OptionsContentSlack from "./OptionsContentSlack";
 import OptionsContentGitHub from "./OptionsContentGitHub";
+import OptionsContentSmartAutocomplete from "./OptionsContentSmartAutocomplete";
 
 const OptionsContent = ({ selectedSetting }) => {
   switch (selectedSetting) {
@@ -17,6 +18,8 @@ const OptionsContent = ({ selectedSetting }) => {
       return <OptionsContentApi />;
     case "sync":
       return <OptionsContentSync />;
+    case "smartAutocomplete":
+      return <OptionsContentSmartAutocomplete />;
     case "gmail":
       return <OptionsContentGmail />;
     case "jira":

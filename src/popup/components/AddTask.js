@@ -3,13 +3,17 @@ import { formatDate, isValidDate } from "../../utils/dates";
 import {
   getLastSyncedCustomSections,
   getStoredGeneralSettings,
+  getStoredSmartAutocompleteSettings,
+  getStoredLabels,
   setStoredToken,
+  clearStoredTaskContext,
 } from "../../utils/storage";
 import {
   addTask,
   getCustomSections,
   getDefaultCustomSection,
 } from "../../utils/api";
+import { suggestLabels } from "../../utils/taskContext";
 
 import { BsSun, BsMoon, BsCalendarPlus, BsCalendarX } from "react-icons/bs";
 
@@ -31,6 +35,7 @@ let messageCounter = 0;
 
 const AddTask = ({ setOnboarded }) => {
   const [displaySettings, setDisplaySettings] = useState({});
+  const [smartAutocompleteSettings, setSmartAutocompleteSettings] = useState({});
 
   const [taskTitle, setTaskTitle] = useState(localStorage.savedTitle || "");
   const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
@@ -53,6 +58,13 @@ const AddTask = ({ setOnboarded }) => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  // Smart context state
+  const [taskContext, setTaskContext] = useState(null);
+  const [suggestedTitle, setSuggestedTitle] = useState("");
+  const [suggestedTimeEstimate, setSuggestedTimeEstimate] = useState(null);
+  const [suggestedLabels, setSuggestedLabels] = useState([]);
+  const [contextApplied, setContextApplied] = useState(false);
+
   const logout = useCallback(() => {
     setStoredToken(null);
     setOnboarded(false);
@@ -70,7 +82,8 @@ const AddTask = ({ setOnboarded }) => {
       } = settings;
 
       // Don't overwrite the task title if some text is already saved in local storage
-      if (autoPopulateTaskTitle && taskTitle === "") {
+      // Also skip if smart autocomplete has already set a title
+      if (autoPopulateTaskTitle && taskTitle === "" && !contextApplied) {
         // Get the title of the current web page
         chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
           let url = tabs[0].url;
@@ -112,6 +125,69 @@ const AddTask = ({ setOnboarded }) => {
         });
       }
     });
+  }, [contextApplied]);
+
+  // Load smart autocomplete settings and context
+  useEffect(() => {
+    const loadSmartContext = async () => {
+      const settings = await getStoredSmartAutocompleteSettings();
+      setSmartAutocompleteSettings(settings);
+
+      if (!settings.enabled) return;
+
+      // Request context from background script
+      chrome.runtime.sendMessage(
+        { message: "getTaskContext" },
+        async (response) => {
+          if (chrome.runtime.lastError) {
+            console.log("Smart context not available:", chrome.runtime.lastError);
+            return;
+          }
+
+          if (response?.success && response.context) {
+            const context = response.context;
+            setTaskContext(context);
+
+            // Set suggested title
+            if (settings.showSuggestedTitle && context.suggestedTitleWithLink) {
+              setSuggestedTitle(context.suggestedTitleWithLink);
+
+              // Auto-fill title if enabled and no saved title
+              if (settings.autoFillTitle && !localStorage.savedTitle) {
+                setTaskTitle(context.suggestedTitleWithLink);
+                setContextApplied(true);
+              }
+            }
+
+            // Set suggested time estimate
+            if (settings.showTimeEstimate && context.suggestedEstimate) {
+              setSuggestedTimeEstimate(context.suggestedEstimate);
+
+              // Auto-apply time estimate if enabled
+              if (settings.autoApplyTimeEstimate) {
+                setTimeEstimate(context.suggestedEstimate);
+              }
+            }
+
+            // Get label suggestions
+            if (settings.showLabelSuggestions && context.labelKeywords?.length > 0) {
+              const userLabels = await getStoredLabels();
+              if (userLabels) {
+                const suggestions = suggestLabels(userLabels, context.labelKeywords);
+                setSuggestedLabels(suggestions);
+              }
+            }
+          }
+        }
+      );
+    };
+
+    loadSmartContext();
+
+    // Cleanup: clear the stored context when popup closes
+    return () => {
+      clearStoredTaskContext();
+    };
   }, []);
 
   useEffect(() => {
@@ -432,6 +508,12 @@ const AddTask = ({ setOnboarded }) => {
             title={taskTitle}
             setTaskTitle={setTaskTitle}
             onAutocompleteStateChange={setIsAutocompleteOpen}
+            suggestedTitle={suggestedTitle}
+            taskContext={taskContext}
+            onApplySuggestion={(title) => {
+              setTaskTitle(title);
+              setContextApplied(true);
+            }}
           />
 
           {displaySettings?.displayTaskNoteInput && (
@@ -461,6 +543,8 @@ const AddTask = ({ setOnboarded }) => {
               timeEstimate={timeEstimate}
               setTimeEstimate={setTimeEstimate}
               timeEstimateButtons={timeEstimateButtons}
+              suggestedTimeEstimate={suggestedTimeEstimate}
+              taskContext={taskContext}
             />
           )}
 
@@ -473,7 +557,12 @@ const AddTask = ({ setOnboarded }) => {
           )}
 
           {displaySettings?.displaySetLabelsPicker && (
-            <AddTaskLabels labels={labels} setLabels={setLabels} />
+            <AddTaskLabels
+              labels={labels}
+              setLabels={setLabels}
+              suggestedLabels={suggestedLabels}
+              taskContext={taskContext}
+            />
           )}
         </div>
 
