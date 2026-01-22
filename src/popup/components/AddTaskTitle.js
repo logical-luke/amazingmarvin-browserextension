@@ -10,6 +10,8 @@ const AddTaskTitle = ({
   suggestedTitle,
   taskContext,
   onApplySuggestion,
+  aiSuggestions,
+  aiLoading,
 }) => {
   const inputRef = useRef(null);
 
@@ -210,6 +212,7 @@ const AddTaskTitle = ({
   // Check if there's a suggested title that differs from the current title
   const hasSuggestion = suggestedTitle && suggestedTitle !== title && !title;
   const showSuggestionIndicator = suggestedTitle && title !== suggestedTitle;
+  const isAISuggestion = aiSuggestions?.isAISuggestion;
 
   // Get platform label for tooltip
   const getPlatformLabel = () => {
@@ -236,16 +239,25 @@ const AddTaskTitle = ({
         <label className="label">
           <span className="label-text text-neutral">Task title</span>
         </label>
-        {showSuggestionIndicator && (
+        {aiLoading && (
+          <span className="flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500">
+            <span className="animate-pulse">Generating AI suggestion...</span>
+          </span>
+        )}
+        {showSuggestionIndicator && !aiLoading && (
           <button
             type="button"
-            className="flex items-center gap-1 px-2 py-0.5 text-xs bg-gradient-to-r from-[#26d6c4] to-[#10b1d3] text-white rounded-full hover:opacity-90 transition-opacity"
+            className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded-full hover:opacity-90 transition-opacity ${
+              isAISuggestion
+                ? "bg-gradient-to-r from-purple-500 to-purple-600 text-white"
+                : "bg-gradient-to-r from-[#26d6c4] to-[#10b1d3] text-white"
+            }`}
             onClick={applySuggestedTitle}
-            data-hov={`Use suggested title from ${getPlatformLabel()}`}
+            data-hov={isAISuggestion ? "AI-generated suggestion" : `Use suggested title from ${getPlatformLabel()}`}
             data-pos="T"
           >
             <BsLightbulb size={12} />
-            <span>Suggestion</span>
+            <span>{isAISuggestion ? "AI Suggestion" : "Suggestion"}</span>
           </button>
         )}
       </div>
@@ -288,14 +300,14 @@ const AddTaskTitle = ({
       </div>
 
       {/* Show suggestion preview when input is empty and there's a suggestion */}
-      {hasSuggestion && (
+      {hasSuggestion && !aiLoading && (
         <div className="mt-1 text-xs text-gray-500">
           <span className="flex items-center gap-1">
-            <BsLightbulb size={10} className="text-[#1CC5CB]" />
-            Click the placeholder or{" "}
+            <BsLightbulb size={10} className={isAISuggestion ? "text-purple-500" : "text-[#1CC5CB]"} />
+            {isAISuggestion ? "AI-generated: " : ""}Click the placeholder or{" "}
             <button
               type="button"
-              className="text-[#1CC5CB] hover:underline"
+              className={`${isAISuggestion ? "text-purple-500" : "text-[#1CC5CB]"} hover:underline`}
               onClick={applySuggestedTitle}
             >
               click here

@@ -85,7 +85,8 @@
     }
   ],
   "host_permissions": [
-    "https://serv.amazingmarvin.com/api/*"
+    "https://serv.amazingmarvin.com/api/*",
+    "https://api.anthropic.com/*"
   ],
   "permissions": [
     "storage",
