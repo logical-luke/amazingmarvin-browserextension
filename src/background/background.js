@@ -15,7 +15,10 @@ import {
   getStoredSmartAutocompleteSettings,
   setStoredTaskContext,
   clearStoredTaskContext,
+  getStoredAISuggestionsSettings,
+  setStoredAISuggestionsSettings,
 } from "../utils/storage";
+import { getAISuggestions } from "../utils/ai";
 import {
   createTaskContext,
   detectPlatform,
@@ -128,6 +131,17 @@ chrome.runtime.onInstalled.addListener(() => {
         rememberChoices: true,
         customEstimates: {},
         userPreferences: {},
+      });
+    }
+  });
+  getStoredAISuggestionsSettings().then((settings) => {
+    if (!settings || Object.keys(settings).length === 0) {
+      setStoredAISuggestionsSettings({
+        enabled: false,
+        apiKey: '',
+        showTokenUsage: false,
+        cacheEnabled: true,
+        cacheTTL: 3600000,
       });
     }
   });
@@ -364,5 +378,31 @@ chrome.runtime.onMessage.addListener(async function (
     }
     sendResponse({ success: true });
     return true;
+  }
+
+  if (request.message === "getAISuggestions") {
+    // Popup is requesting AI-powered suggestions
+    (async () => {
+      try {
+        const aiSettings = await getStoredAISuggestionsSettings();
+        if (!aiSettings.enabled || !aiSettings.apiKey) {
+          sendResponse({ success: false, reason: "disabled" });
+          return;
+        }
+
+        const userLabels = await getStoredLabels();
+        const suggestions = await getAISuggestions(request.context, userLabels);
+
+        if (suggestions) {
+          sendResponse({ success: true, suggestions });
+        } else {
+          sendResponse({ success: false, reason: "no_suggestions" });
+        }
+      } catch (error) {
+        console.error('AI suggestions error:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true; // Keep channel open for async response
   }
 });

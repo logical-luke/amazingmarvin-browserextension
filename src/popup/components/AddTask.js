@@ -4,6 +4,7 @@ import {
   getLastSyncedCustomSections,
   getStoredGeneralSettings,
   getStoredSmartAutocompleteSettings,
+  getStoredAISuggestionsSettings,
   getStoredLabels,
   setStoredToken,
   clearStoredTaskContext,
@@ -64,6 +65,10 @@ const AddTask = ({ setOnboarded }) => {
   const [suggestedTimeEstimate, setSuggestedTimeEstimate] = useState(null);
   const [suggestedLabels, setSuggestedLabels] = useState([]);
   const [contextApplied, setContextApplied] = useState(false);
+
+  // AI suggestions state
+  const [aiSuggestions, setAISuggestions] = useState(null);
+  const [aiLoading, setAILoading] = useState(false);
 
   const logout = useCallback(() => {
     setStoredToken(null);
@@ -148,7 +153,7 @@ const AddTask = ({ setOnboarded }) => {
             const context = response.context;
             setTaskContext(context);
 
-            // Set suggested title
+            // Set template-based suggested title first (as fallback)
             if (settings.showSuggestedTitle && context.suggestedTitleWithLink) {
               setSuggestedTitle(context.suggestedTitleWithLink);
 
@@ -176,6 +181,52 @@ const AddTask = ({ setOnboarded }) => {
                 const suggestions = suggestLabels(userLabels, context.labelKeywords);
                 setSuggestedLabels(suggestions);
               }
+            }
+
+            // Now try to get AI suggestions if enabled
+            const aiSettings = await getStoredAISuggestionsSettings();
+            if (aiSettings.enabled && aiSettings.apiKey) {
+              setAILoading(true);
+              chrome.runtime.sendMessage(
+                { message: "getAISuggestions", context },
+                (aiResponse) => {
+                  setAILoading(false);
+                  if (chrome.runtime.lastError) {
+                    console.log("AI suggestions not available:", chrome.runtime.lastError);
+                    return;
+                  }
+
+                  if (aiResponse?.success && aiResponse.suggestions) {
+                    const aiSugg = aiResponse.suggestions;
+                    setAISuggestions(aiSugg);
+
+                    // Override template suggestions with AI suggestions if available
+                    if (aiSugg.title) {
+                      const url = context.metadata?.url || context.metadata?.prUrl || context.sourceUrl;
+                      const aiTitle = url ? `[${aiSugg.title}](${url})` : aiSugg.title;
+                      setSuggestedTitle(aiTitle);
+
+                      // Auto-fill title if enabled and no saved title and not already applied
+                      if (settings.autoFillTitle && !localStorage.savedTitle && !contextApplied) {
+                        setTaskTitle(aiTitle);
+                        setContextApplied(true);
+                      }
+                    }
+
+                    if (aiSugg.timeEstimate) {
+                      setSuggestedTimeEstimate(aiSugg.timeEstimate);
+
+                      if (settings.autoApplyTimeEstimate && !timeEstimate) {
+                        setTimeEstimate(aiSugg.timeEstimate);
+                      }
+                    }
+
+                    if (aiSugg.suggestedLabels?.length > 0) {
+                      setSuggestedLabels(aiSugg.suggestedLabels);
+                    }
+                  }
+                }
+              );
             }
           }
         }
@@ -514,6 +565,8 @@ const AddTask = ({ setOnboarded }) => {
               setTaskTitle(title);
               setContextApplied(true);
             }}
+            aiSuggestions={aiSuggestions}
+            aiLoading={aiLoading}
           />
 
           {displaySettings?.displayTaskNoteInput && (

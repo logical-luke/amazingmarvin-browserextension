@@ -319,3 +319,41 @@ export function clearStoredTaskContext() {
     });
   });
 }
+
+export function getStoredAISuggestionsSettings() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["aiSuggestionsSettings"]).then((result) => {
+      resolve(result.aiSuggestionsSettings || {
+        enabled: false,
+        apiKey: '',
+        showTokenUsage: false,
+        cacheEnabled: true,
+        cacheTTL: 3600000, // 1 hour
+      });
+    });
+  });
+}
+
+export function setStoredAISuggestionsSettings(settings) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ aiSuggestionsSettings: settings }).then(() => {
+      resolve();
+    });
+  });
+}
+
+export function getStoredAISuggestionCache() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["aiSuggestionCache"]).then((result) => {
+      resolve(result.aiSuggestionCache || {});
+    });
+  });
+}
+
+export function setStoredAISuggestionCache(cache) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ aiSuggestionCache: cache }).then(() => {
+      resolve();
+    });
+  });
+}
