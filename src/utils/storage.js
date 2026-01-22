@@ -267,3 +267,55 @@ export function setStoredGitHubSettings(settings) {
     });
   });
 }
+
+export function getStoredSmartAutocompleteSettings() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["smartAutocompleteSettings"]).then((result) => {
+      resolve(result.smartAutocompleteSettings || {
+        enabled: true,
+        showSuggestedTitle: true,
+        autoFillTitle: false,
+        showTimeEstimate: true,
+        autoApplyTimeEstimate: false,
+        showLabelSuggestions: true,
+        showPrioritySuggestions: true,
+        showQuickActions: true,
+        rememberChoices: true,
+        customEstimates: {},
+        userPreferences: {},
+      });
+    });
+  });
+}
+
+export function setStoredSmartAutocompleteSettings(settings) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ smartAutocompleteSettings: settings }).then(() => {
+      resolve();
+    });
+  });
+}
+
+export function getStoredTaskContext() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["currentTaskContext"]).then((result) => {
+      resolve(result.currentTaskContext || null);
+    });
+  });
+}
+
+export function setStoredTaskContext(context) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ currentTaskContext: context }).then(() => {
+      resolve();
+    });
+  });
+}
+
+export function clearStoredTaskContext() {
+  return new Promise((resolve) => {
+    chrome.storage.local.remove(["currentTaskContext"]).then(() => {
+      resolve();
+    });
+  });
+}

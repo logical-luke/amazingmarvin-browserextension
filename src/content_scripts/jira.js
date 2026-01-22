@@ -746,3 +746,32 @@ const loopInterval = setInterval(init, 1000);
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
   init();
 }
+
+/**
+ * Message listener for popup context requests
+ */
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.message === 'getPageContext') {
+    // Gather context from the current page for smart autocomplete
+    const metadata = getJiraMetadata();
+
+    if (metadata) {
+      sendResponse({
+        context: {
+          type: 'jira-issue',
+          platform: 'jira',
+          issueKey: metadata.issueKey,
+          summary: metadata.summary,
+          title: metadata.summary,
+          description: metadata.description,
+          issueType: metadata.issueType,
+          priority: metadata.priority,
+          url: metadata.issueUrl,
+        },
+      });
+    } else {
+      sendResponse({ context: null });
+    }
+    return true;
+  }
+});

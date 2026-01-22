@@ -1270,3 +1270,63 @@ const loopInterval = setInterval(init, 1000);
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
   init();
 }
+
+/**
+ * Message listener for popup context requests
+ */
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.message === 'getPageContext') {
+    // Gather context from the current page for smart autocomplete
+    const url = window.location.href;
+    let context = null;
+
+    // Check for PR detail view
+    if (url.match(/\/pull\/\d+/)) {
+      const metadata = getPRMetadataFromDetailView();
+      if (metadata) {
+        context = {
+          type: 'pr',
+          platform: 'github',
+          ...metadata,
+          url: metadata.prUrl,
+          title: metadata.prTitle,
+          needsReview: !metadata.isOwnPR && metadata.reviewStatus !== 'approved',
+        };
+      }
+    }
+
+    // Check for issue view
+    else if (url.match(/\/issues\/\d+/)) {
+      const ctx = getContextFromUrl();
+      const repository = getRepositoryFromUrl();
+      const titleElement = document.querySelector('.js-issue-title');
+      context = {
+        type: 'issue',
+        platform: 'github',
+        issueNumber: ctx?.number,
+        title: titleElement?.textContent?.trim() || 'Issue',
+        url: url,
+        repository: repository?.fullName,
+      };
+    }
+
+    // Check for notifications page
+    else if (url.includes('/notifications')) {
+      // Get first unread notification if available
+      const firstNotification = document.querySelector('.notifications-list-item.is-unread, [data-notification-id]');
+      if (firstNotification) {
+        const metadata = getNotificationMetadata(firstNotification);
+        if (metadata) {
+          context = {
+            type: 'notification',
+            platform: 'github',
+            ...metadata,
+          };
+        }
+      }
+    }
+
+    sendResponse({ context });
+    return true;
+  }
+});

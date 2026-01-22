@@ -11,6 +11,7 @@ const App = () => {
     { name: "badge", text: "Badge" },
     { name: "api", text: "API Token" },
     { name: "sync", text: "Sync" },
+    { name: "smartAutocomplete", text: "Smart Autocomplete" },
     { name: "gmail", text: "Gmail Addon" },
     { name: "jira", text: "Jira Addon" },
     { name: "slack", text: "Slack Addon" },
