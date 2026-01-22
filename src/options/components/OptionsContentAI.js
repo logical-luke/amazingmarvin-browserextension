@@ -5,10 +5,12 @@ import {
   getStoredAISuggestionsSettings,
   setStoredAISuggestionsSettings,
 } from "../../utils/storage";
-import { verifyAnthropicApiKey } from "../../utils/ai";
+import { AI_PROVIDERS, verifyApiKey } from "../../utils/ai";
 
 const OptionsContentAI = () => {
   const [enabled, setEnabled] = useState(false);
+  const [provider, setProvider] = useState('anthropic');
+  const [model, setModel] = useState('claude-3-haiku-20240307');
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [showTokenUsage, setShowTokenUsage] = useState(false);
@@ -22,6 +24,8 @@ const OptionsContentAI = () => {
     getStoredAISuggestionsSettings().then((settings) => {
       if (settings) {
         setEnabled(settings.enabled ?? false);
+        setProvider(settings.provider ?? 'anthropic');
+        setModel(settings.model ?? AI_PROVIDERS[settings.provider || 'anthropic']?.defaultModel);
         setApiKey(settings.apiKey ?? '');
         setShowTokenUsage(settings.showTokenUsage ?? false);
         setCacheEnabled(settings.cacheEnabled ?? true);
@@ -31,6 +35,8 @@ const OptionsContentAI = () => {
 
   const getAllSettings = () => ({
     enabled,
+    provider,
+    model,
     apiKey,
     showTokenUsage,
     cacheEnabled,
@@ -49,13 +55,28 @@ const OptionsContentAI = () => {
     setVerifying(true);
     setVerificationStatus(null);
 
-    const isValid = await verifyAnthropicApiKey(apiKey);
+    const isValid = await verifyApiKey(provider, apiKey);
     setVerificationStatus(isValid ? 'valid' : 'invalid');
     setVerifying(false);
   };
 
   const handleSaveApiKey = () => {
     saveSettings({ ...getAllSettings(), apiKey });
+  };
+
+  const handleProviderChange = (newProvider) => {
+    setProvider(newProvider);
+    // Reset to default model for the new provider
+    const defaultModel = AI_PROVIDERS[newProvider]?.defaultModel;
+    setModel(defaultModel);
+    // Clear verification status when provider changes
+    setVerificationStatus(null);
+    saveSettings({ ...getAllSettings(), provider: newProvider, model: defaultModel });
+  };
+
+  const handleModelChange = (newModel) => {
+    setModel(newModel);
+    saveSettings({ ...getAllSettings(), model: newModel });
   };
 
   const handleEnabledChange = () => {
@@ -76,6 +97,8 @@ const OptionsContentAI = () => {
     saveSettings({ ...getAllSettings(), cacheEnabled: newValue });
   };
 
+  const currentProvider = AI_PROVIDERS[provider];
+
   return (
     <>
       {/* Enable AI Suggestions */}
@@ -84,9 +107,9 @@ const OptionsContentAI = () => {
           <h3 className="font-bold mb-3">Enable AI Suggestions</h3>
           <div className="flex flex-row items-center justify-between w-full mt-3 mb-3">
             <p>
-              Use Claude AI (Haiku model) to generate intelligent task suggestions
-              based on the source content. This provides smarter titles, time estimates,
-              and label suggestions than the template-based autocomplete.
+              Use AI to generate intelligent task suggestions based on the source
+              content. This provides smarter titles, time estimates, and label
+              suggestions than the template-based autocomplete.
             </p>
             <label className="relative inline-flex cursor-pointer ml-8">
               <input
@@ -101,26 +124,87 @@ const OptionsContentAI = () => {
           </div>
           {!apiKey && (
             <p className="text-sm text-amber-600">
-              Add your Anthropic API key below to enable AI suggestions.
+              Add your API key below to enable AI suggestions.
             </p>
           )}
+        </div>
+      </div>
+
+      {/* Provider Selection */}
+      <div className="rounded-lg bg-white shadow-lg text-sm mt-8">
+        <div className="px-6 py-8">
+          <h3 className="font-bold mb-3">AI Provider</h3>
+          <p className="mb-4 text-gray-600">
+            Choose your preferred AI provider. Each provider has different models
+            with varying capabilities and pricing.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            {Object.entries(AI_PROVIDERS).map(([key, config]) => (
+              <button
+                key={key}
+                onClick={() => handleProviderChange(key)}
+                className={`p-4 rounded-lg border-2 transition-all text-left ${
+                  provider === key
+                    ? 'border-[#1CC5CB] bg-[#1CC5CB]/5'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="font-medium">{config.name}</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {config.models.length} models
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Model Selection */}
+      <div className="rounded-lg bg-white shadow-lg text-sm mt-8">
+        <div className="px-6 py-8">
+          <h3 className="font-bold mb-3">Model</h3>
+          <p className="mb-4 text-gray-600">
+            Select a model from {currentProvider?.name}. Faster models are more
+            affordable but may produce slightly less accurate suggestions.
+          </p>
+          <div className="space-y-2">
+            {currentProvider?.models.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => handleModelChange(m.id)}
+                className={`w-full p-3 rounded-lg border-2 transition-all text-left flex justify-between items-center ${
+                  model === m.id
+                    ? 'border-[#1CC5CB] bg-[#1CC5CB]/5'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div>
+                  <div className="font-medium">{m.name}</div>
+                  <div className="text-xs text-gray-500">{m.description}</div>
+                </div>
+                {model === m.id && (
+                  <BsCheckCircle className="text-[#1CC5CB]" size={20} />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* API Key */}
       <div className="rounded-lg bg-white shadow-lg text-sm mt-8">
         <div className="px-6 py-8">
-          <h3 className="font-bold mb-3">Anthropic API Key</h3>
+          <h3 className="font-bold mb-3">{currentProvider?.name} API Key</h3>
           <p className="mb-4 text-gray-600">
-            Enter your Anthropic API key to enable AI-powered suggestions.
+            Enter your {currentProvider?.name} API key.
             Get your API key from{" "}
             <a
-              href="https://console.anthropic.com/settings/keys"
+              href={currentProvider?.docsUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[#1CC5CB] hover:underline"
             >
-              console.anthropic.com
+              {currentProvider?.docsUrl.replace('https://', '').split('/')[0]}
             </a>
             . Your key is stored locally and never shared.
           </p>
@@ -133,7 +217,7 @@ const OptionsContentAI = () => {
                   setApiKey(e.target.value);
                   setVerificationStatus(null);
                 }}
-                placeholder="sk-ant-api..."
+                placeholder={currentProvider?.keyPlaceholder}
                 className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1CC5CB]"
               />
               <button
@@ -197,7 +281,7 @@ const OptionsContentAI = () => {
         </div>
       </div>
 
-      {/* Token Usage Display */}
+      {/* Cost Information */}
       <div className="rounded-lg bg-white shadow-lg text-sm mt-8 mb-8">
         <div className="px-6 py-8">
           <h3 className="font-bold mb-3">Cost Information</h3>
@@ -207,9 +291,8 @@ const OptionsContentAI = () => {
                 Show token usage information when AI generates suggestions.
               </p>
               <p className="text-gray-500 text-xs mt-1">
-                Claude Haiku costs approximately $0.00025 per 1K input tokens and
-                $0.00125 per 1K output tokens. A typical suggestion uses ~500 input
-                and ~100 output tokens (~$0.0003 per suggestion).
+                Costs vary by provider and model. A typical suggestion uses ~500 input
+                and ~100 output tokens. Enable caching to reduce costs.
               </p>
             </div>
             <label className="relative inline-flex cursor-pointer ml-8">

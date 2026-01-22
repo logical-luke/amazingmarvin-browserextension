@@ -102,14 +102,16 @@ marvinSuccessMessage.classList.add(
 );
 
 function showSuccessMessage(status) {
-  marvinSuccessMessage.textContent =
-    status === "success"
-      ? "Task successfully added to Marvin!"
-      : "Failed to add Task to Marvin!";
-
-  if (status === "noToken") {
-    marvinSuccessMessage.textContent +=
-      " Please add your Marvin API token in the extension settings.";
+  if (status === "success") {
+    marvinSuccessMessage.textContent = "Task successfully added to Marvin!";
+  } else if (status === "noToken") {
+    marvinSuccessMessage.textContent =
+      "Failed to add Task to Marvin! Please add your Marvin API token in the extension settings.";
+  } else if (status === "reload") {
+    marvinSuccessMessage.textContent =
+      "Extension was updated. Please reload this page to continue using Marvin.";
+  } else {
+    marvinSuccessMessage.textContent = "Failed to add Task to Marvin!";
   }
 
   marvinSuccessMessage.classList.remove("marvinSuccessMessageHidden");
@@ -119,7 +121,7 @@ function showSuccessMessage(status) {
       marvinSuccessMessage.classList.remove("marvinSuccessMessageVisible");
       marvinSuccessMessage.classList.add("marvinSuccessMessageHidden");
     },
-    status === "noToken" ? 6000 : 2000
+    status === "noToken" || status === "reload" ? 6000 : 2000
   );
 }
 
@@ -273,10 +275,38 @@ function getSlackMessageMetadata(messageElement) {
 let scheduleForToday = true;
 
 /**
+ * Checks if extension context is still valid
+ */
+function isExtensionContextValid() {
+  try {
+    // This will throw if context is invalidated
+    chrome.runtime.getURL("");
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
  * Handles click on Marvin button
  */
 async function handleMarvinButtonClick(metadata) {
-  const token = await getStoredToken();
+  // Check if extension context is still valid
+  if (!isExtensionContextValid()) {
+    showSuccessMessage("reload");
+    return;
+  }
+
+  let token;
+  try {
+    token = await getStoredToken();
+  } catch (error) {
+    if (error.message?.includes("Extension context invalidated")) {
+      showSuccessMessage("reload");
+      return;
+    }
+    throw error;
+  }
 
   if (!token) {
     showSuccessMessage("noToken");
@@ -338,7 +368,11 @@ async function handleMarvinButtonClick(metadata) {
     showSuccessMessage(result);
   } catch (error) {
     console.error("Failed to add task to Marvin:", error);
-    showSuccessMessage("fail");
+    if (error.message?.includes("Extension context invalidated")) {
+      showSuccessMessage("reload");
+    } else {
+      showSuccessMessage("fail");
+    }
   }
 }
 

@@ -1,8 +1,10 @@
 /**
  * AI-Powered Task Suggestions Utility
  *
- * Integrates with Anthropic Claude API (Haiku model) to generate
- * intelligent task suggestions based on source content.
+ * Supports multiple AI providers:
+ * - Anthropic (Claude)
+ * - OpenAI (GPT)
+ * - Google (Gemini)
  */
 
 import {
@@ -11,8 +13,50 @@ import {
   setStoredAISuggestionCache,
 } from './storage';
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-3-haiku-20240307';
+// Provider configurations
+export const AI_PROVIDERS = {
+  anthropic: {
+    name: 'Anthropic',
+    apiUrl: 'https://api.anthropic.com/v1/messages',
+    models: [
+      { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Fast & affordable' },
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', description: 'Best balance' },
+      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', description: 'Faster, smarter' },
+    ],
+    defaultModel: 'claude-3-haiku-20240307',
+    keyPrefix: 'sk-ant-',
+    keyPlaceholder: 'sk-ant-api...',
+    docsUrl: 'https://console.anthropic.com/settings/keys',
+  },
+  openai: {
+    name: 'OpenAI',
+    apiUrl: 'https://api.openai.com/v1/chat/completions',
+    models: [
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast & affordable' },
+      { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable' },
+      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Fast GPT-4' },
+      { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Legacy, cheapest' },
+    ],
+    defaultModel: 'gpt-4o-mini',
+    keyPrefix: 'sk-',
+    keyPlaceholder: 'sk-...',
+    docsUrl: 'https://platform.openai.com/api-keys',
+  },
+  google: {
+    name: 'Google',
+    apiUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
+    models: [
+      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: 'Fast & affordable' },
+      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: 'Most capable' },
+      { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash', description: 'Latest experimental' },
+    ],
+    defaultModel: 'gemini-1.5-flash',
+    keyPrefix: 'AI',
+    keyPlaceholder: 'AIza...',
+    docsUrl: 'https://aistudio.google.com/app/apikey',
+  },
+};
+
 const MAX_TOKENS = 250;
 
 /**
@@ -32,7 +76,7 @@ function isCacheValid(cachedEntry, ttl) {
 }
 
 /**
- * Builds the prompt for Claude
+ * Builds the prompt for AI providers
  */
 function buildPrompt(context, userLabels) {
   const labelNames = userLabels?.map(l => l.title).join(', ') || 'None available';
@@ -112,7 +156,108 @@ function parseAIResponse(responseText, userLabels) {
 }
 
 /**
- * Calls the Claude API to generate suggestions
+ * Calls Anthropic Claude API
+ */
+async function callAnthropicAPI(prompt, apiKey, model) {
+  const response = await fetch(AI_PROVIDERS.anthropic.apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: model,
+      max_tokens: MAX_TOKENS,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    console.error('Anthropic API error:', response.status, errorData);
+    return null;
+  }
+
+  const data = await response.json();
+  return data.content?.[0]?.text || null;
+}
+
+/**
+ * Calls OpenAI API
+ */
+async function callOpenAIAPI(prompt, apiKey, model) {
+  const response = await fetch(AI_PROVIDERS.openai.apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: model,
+      max_tokens: MAX_TOKENS,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    console.error('OpenAI API error:', response.status, errorData);
+    return null;
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || null;
+}
+
+/**
+ * Calls Google Gemini API
+ */
+async function callGoogleAPI(prompt, apiKey, model) {
+  const url = `${AI_PROVIDERS.google.apiUrl}/${model}:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        maxOutputTokens: MAX_TOKENS,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    console.error('Google API error:', response.status, errorData);
+    return null;
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+}
+
+/**
+ * Calls the appropriate AI provider API
+ */
+async function callProviderAPI(provider, prompt, apiKey, model) {
+  switch (provider) {
+    case 'anthropic':
+      return callAnthropicAPI(prompt, apiKey, model);
+    case 'openai':
+      return callOpenAIAPI(prompt, apiKey, model);
+    case 'google':
+      return callGoogleAPI(prompt, apiKey, model);
+    default:
+      console.error('Unknown AI provider:', provider);
+      return null;
+  }
+}
+
+/**
+ * Gets AI suggestions from the configured provider
  */
 export async function getAISuggestions(context, userLabels) {
   const settings = await getStoredAISuggestionsSettings();
@@ -120,6 +265,9 @@ export async function getAISuggestions(context, userLabels) {
   if (!settings.enabled || !settings.apiKey) {
     return null;
   }
+
+  const provider = settings.provider || 'anthropic';
+  const model = settings.model || AI_PROVIDERS[provider]?.defaultModel;
 
   // Check cache first
   if (settings.cacheEnabled) {
@@ -133,31 +281,8 @@ export async function getAISuggestions(context, userLabels) {
   }
 
   try {
-    const response = await fetch(ANTHROPIC_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': settings.apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        messages: [{
-          role: 'user',
-          content: buildPrompt(context, userLabels),
-        }],
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Claude API error:', response.status, errorData);
-      return null;
-    }
-
-    const data = await response.json();
-    const responseText = data.content?.[0]?.text;
+    const prompt = buildPrompt(context, userLabels);
+    const responseText = await callProviderAPI(provider, prompt, settings.apiKey, model);
 
     if (!responseText) {
       return null;
@@ -175,7 +300,6 @@ export async function getAISuggestions(context, userLabels) {
       };
 
       // Clean old cache entries
-      const now = Date.now();
       for (const key of Object.keys(cache)) {
         if (!isCacheValid(cache[key], settings.cacheTTL)) {
           delete cache[key];
@@ -193,30 +317,24 @@ export async function getAISuggestions(context, userLabels) {
 }
 
 /**
- * Verifies an Anthropic API key by making a minimal request
+ * Verifies an API key for the specified provider
  */
-export async function verifyAnthropicApiKey(apiKey) {
+export async function verifyApiKey(provider, apiKey) {
   try {
-    const response = await fetch(ANTHROPIC_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 10,
-        messages: [{
-          role: 'user',
-          content: 'Say "OK"',
-        }],
-      }),
-    });
+    const testPrompt = 'Say "OK"';
+    const model = AI_PROVIDERS[provider]?.defaultModel;
 
-    return response.ok;
+    if (!model) {
+      return false;
+    }
+
+    const response = await callProviderAPI(provider, testPrompt, apiKey, model);
+    return response !== null;
   } catch (error) {
     console.error('API key verification failed:', error);
     return false;
   }
 }
+
+// Legacy export for backwards compatibility
+export const verifyAnthropicApiKey = (apiKey) => verifyApiKey('anthropic', apiKey);
