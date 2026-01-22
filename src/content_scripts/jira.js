@@ -1,6 +1,7 @@
 import { getStoredJiraSettings, getStoredToken } from "../utils/storage";
 import { addTask } from "../utils/api";
 import { formatDate } from "../utils/dates";
+import { TITLE_TEMPLATES } from "../utils/taskContext";
 
 const logo = chrome.runtime.getURL("static/logo.png");
 
@@ -278,6 +279,29 @@ function getJiraMetadata(element = null) {
 let scheduleForToday = true;
 
 /**
+ * Generates smart title based on issue type
+ */
+function generateSmartTitle(metadata) {
+  const issueType = (metadata.issueType || '').toLowerCase();
+  let templateKey = 'jira-task';
+
+  if (issueType.includes('bug')) {
+    templateKey = 'jira-bug';
+  } else if (issueType.includes('story')) {
+    templateKey = 'jira-story';
+  } else if (issueType.includes('epic')) {
+    templateKey = 'jira-epic';
+  }
+
+  const template = TITLE_TEMPLATES[templateKey] || TITLE_TEMPLATES['jira-task'];
+  const title = template
+    .replace('{key}', metadata.issueKey || '')
+    .replace('{summary}', metadata.summary || '');
+
+  return `[${title}](${metadata.issueUrl})`;
+}
+
+/**
  * Handles click on Marvin button
  */
 async function handleMarvinButtonClick(metadata) {
@@ -289,7 +313,7 @@ async function handleMarvinButtonClick(metadata) {
   }
 
   const data = {
-    title: `[${metadata.issueKey}: ${metadata.summary}](${metadata.issueUrl})`,
+    title: generateSmartTitle(metadata),
     done: false,
   };
 

@@ -1,6 +1,7 @@
 import { getStoredSlackSettings, getStoredToken } from "../utils/storage";
 import { addTask } from "../utils/api";
 import { formatDate } from "../utils/dates";
+import { TITLE_TEMPLATES } from "../utils/taskContext";
 
 const logo = chrome.runtime.getURL("static/logo.png");
 
@@ -282,14 +283,28 @@ async function handleMarvinButtonClick(metadata) {
     return;
   }
 
-  // Format title: [Slack: Channel/DM] Message preview...
-  const titlePreview =
-    metadata.messageText.length > 60
-      ? metadata.messageText.substring(0, 57) + "..."
+  // Generate smart title with action verb
+  const messagePreview =
+    metadata.messageText.length > 50
+      ? metadata.messageText.substring(0, 47) + "..."
       : metadata.messageText;
 
+  // Determine template based on context
+  let templateKey = 'slack-reply';
+  if (metadata.isThread) {
+    templateKey = 'slack-thread';
+  } else if (metadata.isDM || metadata.channelName.toLowerCase().includes('direct message')) {
+    templateKey = 'slack-dm';
+  }
+
+  const template = TITLE_TEMPLATES[templateKey] || TITLE_TEMPLATES['slack-reply'];
+  const title = template
+    .replace('{channel}', metadata.channelName || '')
+    .replace('{messagePreview}', messagePreview)
+    .replace('{senderName}', metadata.senderName || '');
+
   const data = {
-    title: `[Slack: ${metadata.channelName}] ${titlePreview}`,
+    title: metadata.permalink ? `[${title}](${metadata.permalink})` : title,
     done: false,
   };
 

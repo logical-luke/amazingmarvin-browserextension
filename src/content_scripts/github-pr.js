@@ -1,6 +1,7 @@
 import { getStoredGitHubSettings, getStoredToken } from "../utils/storage";
 import { addTask } from "../utils/api";
 import { formatDate } from "../utils/dates";
+import { TITLE_TEMPLATES } from "../utils/taskContext";
 
 const logo = chrome.runtime.getURL("static/logo.png");
 
@@ -478,86 +479,115 @@ function getNotificationMetadata(notificationElement) {
 }
 
 /**
- * Generates a smart task title based on PR state
+ * Generates a smart task title based on PR state using shared templates
  */
 function getSuggestedTitle(metadata, useSmartTitles) {
+  const formatTitle = (templateKey) => {
+    const template = TITLE_TEMPLATES[templateKey] || TITLE_TEMPLATES['github-pr'];
+    const title = template
+      .replace('{number}', metadata.prNumber || '')
+      .replace('{title}', metadata.prTitle || '');
+    return `[${title}](${metadata.prUrl})`;
+  };
+
   if (!useSmartTitles) {
-    return `[PR #${metadata.prNumber}: ${metadata.prTitle}](${metadata.prUrl})`;
+    return formatTitle('github-pr');
   }
 
-  // If not own PR and no review yet, suggest reviewing
-  if (!metadata.isOwnPR && metadata.reviewStatus !== 'approved') {
-    return `[Review PR #${metadata.prNumber}: ${metadata.prTitle}](${metadata.prUrl})`;
+  // Not own PR - always suggest review
+  if (!metadata.isOwnPR) {
+    return formatTitle('github-review');
   }
 
-  if (metadata.isOwnPR) {
-    // Own PR with failing checks
-    if (metadata.checkStatus === 'failing') {
-      return `[Fix pipeline for PR #${metadata.prNumber}: ${metadata.prTitle}](${metadata.prUrl})`;
-    }
-
-    // Own PR approved and ready to merge
-    if (metadata.reviewStatus === 'approved' && metadata.checkStatus !== 'failing') {
-      return `[Merge PR #${metadata.prNumber}: ${metadata.prTitle}](${metadata.prUrl})`;
-    }
-
-    // Own PR with changes requested
-    if (metadata.reviewStatus === 'changes_requested') {
-      return `[Address review for PR #${metadata.prNumber}: ${metadata.prTitle}](${metadata.prUrl})`;
-    }
+  // Own PR with failing checks
+  if (metadata.checkStatus === 'failing') {
+    return formatTitle('github-fix-pipeline');
   }
 
-  // Default format
-  return `[PR #${metadata.prNumber}: ${metadata.prTitle}](${metadata.prUrl})`;
+  // Own PR with changes requested
+  if (metadata.reviewStatus === 'changes_requested') {
+    return formatTitle('github-address-review');
+  }
+
+  // Own PR approved and ready to merge
+  if (metadata.reviewStatus === 'approved') {
+    return formatTitle('github-merge');
+  }
+
+  // Default format for own PR
+  return formatTitle('github-pr');
 }
 
 /**
- * Generates smart title for a comment
+ * Generates smart title for a comment using shared templates
  */
 function getCommentSuggestedTitle(metadata, useSmartTitles) {
-  const contextLabel = metadata.contextType === 'pr' ? 'PR' : 'Issue';
+  const formatTitle = (templateKey, overrides = {}) => {
+    const template = TITLE_TEMPLATES[templateKey] || TITLE_TEMPLATES['github-comment'];
+    const title = template
+      .replace('{number}', metadata.contextNumber || '')
+      .replace('{author}', metadata.author || '')
+      .replace('{contextType}', metadata.contextType === 'pr' ? 'PR' : 'Issue')
+      .replace('{title}', overrides.title || '');
+    return `[${title}](${metadata.permalink})`;
+  };
 
   if (!useSmartTitles) {
-    return `[Comment on ${contextLabel} #${metadata.contextNumber}](${metadata.permalink})`;
+    return formatTitle('github-comment');
   }
 
   if (metadata.isReviewComment && metadata.hasSuggestion) {
+    // Custom title for suggestions - not in templates
     return `[Apply suggestion on PR #${metadata.contextNumber}](${metadata.permalink})`;
   }
 
   if (metadata.isReviewComment) {
+    // Custom title for review comments
     return `[Address review comment on PR #${metadata.contextNumber}](${metadata.permalink})`;
   }
 
-  return `[Reply to @${metadata.author} on ${contextLabel} #${metadata.contextNumber}](${metadata.permalink})`;
+  // Use template for reply
+  return formatTitle(metadata.contextType === 'pr' ? 'github-reply' : 'github-comment');
 }
 
 /**
- * Generates smart title for a notification
+ * Generates smart title for a notification using shared templates
+ * All titles start with action verbs
  */
 function getNotificationSuggestedTitle(metadata, useSmartTitles) {
-  const contextLabel = metadata.contextType === 'pr' ? 'PR' : 'Issue';
-  const numberPart = metadata.contextNumber ? ` #${metadata.contextNumber}` : '';
+  const formatTitle = (templateKey) => {
+    const template = TITLE_TEMPLATES[templateKey] || TITLE_TEMPLATES['github-notification'];
+    const title = template
+      .replace('{number}', metadata.contextNumber || '')
+      .replace('{title}', metadata.title || '')
+      .replace('{contextType}', metadata.contextType === 'pr' ? 'PR' : 'Issue');
+    return `[${title}](${metadata.url})`;
+  };
 
   if (!useSmartTitles) {
-    return `[${metadata.title}](${metadata.url})`;
+    return formatTitle('github-notification');
   }
 
   switch (metadata.reason) {
     case 'review_requested':
-      return `[Review${numberPart}: ${metadata.title}](${metadata.url})`;
+      return formatTitle('github-notification-review');
     case 'mention':
-      return `[Respond to mention in${numberPart}](${metadata.url})`;
+      return formatTitle('github-notification-mention');
     case 'assign':
-      return `[Work on ${contextLabel}${numberPart}: ${metadata.title}](${metadata.url})`;
+      return formatTitle('github-notification-assign');
     case 'ci_activity':
-      return `[Check CI for${numberPart}: ${metadata.title}](${metadata.url})`;
+      return formatTitle('github-notification-ci');
     case 'comment':
-      return `[Check comment on${numberPart}](${metadata.url})`;
+      // Custom - respond to comment
+      return `[Respond to comment on #${metadata.contextNumber || ''}](${metadata.url})`;
     case 'state_change':
-      return `[Review state change:${numberPart}](${metadata.url})`;
+      // Custom - check state change
+      return `[Check state change on #${metadata.contextNumber || ''}](${metadata.url})`;
+    case 'author':
+      // You're the author - check your PR
+      return `[Check your PR #${metadata.contextNumber || ''}: ${metadata.title || ''}](${metadata.url})`;
     default:
-      return `[${metadata.title}](${metadata.url})`;
+      return formatTitle('github-notification');
   }
 }
 
@@ -1310,20 +1340,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       };
     }
 
-    // Check for notifications page
+    // Check for notifications page - don't auto-fill context
+    // since we don't know which notification user wants and
+    // notifications lack full PR metadata (isOwnPR, reviewStatus, etc.)
+    // User should click the Marvin button on specific notification instead
     else if (url.includes('/notifications')) {
-      // Get first unread notification if available
-      const firstNotification = document.querySelector('.notifications-list-item.is-unread, [data-notification-id]');
-      if (firstNotification) {
-        const metadata = getNotificationMetadata(firstNotification);
-        if (metadata) {
-          context = {
-            type: 'notification',
-            platform: 'github',
-            ...metadata,
-          };
-        }
-      }
+      context = null;
     }
 
     sendResponse({ context });
