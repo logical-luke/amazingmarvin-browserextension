@@ -264,6 +264,105 @@ function getIssuePriority() {
 }
 
 /**
+ * Extracts acceptance criteria from the issue description
+ * Looks for common patterns like "Acceptance Criteria:", "AC:", checkbox lists
+ * @returns {string} Acceptance criteria text or empty string
+ */
+function getAcceptanceCriteria() {
+  const descElement = document.querySelector(SELECTORS.issueDescription) ||
+                      document.querySelector('[data-testid*="description"]');
+
+  if (!descElement) return '';
+
+  const descText = descElement.textContent;
+
+  // Look for acceptance criteria sections
+  const acPatterns = [
+    /acceptance\s*criteria[:\s]*([\s\S]*?)(?=\n\n|\n[A-Z]|$)/i,
+    /\bac[:\s]*([\s\S]*?)(?=\n\n|\n[A-Z]|$)/i,
+    /\bgiven[:\s]*([\s\S]*?)(?=\n\n|$)/i,
+  ];
+
+  for (const pattern of acPatterns) {
+    const match = descText.match(pattern);
+    if (match && match[1]) {
+      const ac = match[1].trim();
+      return ac.length > 500 ? ac.substring(0, 497) + '...' : ac;
+    }
+  }
+
+  // Check for checkbox-style items (often used for AC)
+  const checkboxItems = descElement.querySelectorAll('input[type="checkbox"], [role="checkbox"]');
+  if (checkboxItems.length > 0) {
+    const items = Array.from(checkboxItems).map(cb => {
+      const label = cb.closest('li, label, div')?.textContent.trim() || '';
+      const checked = cb.checked ? '[x]' : '[ ]';
+      return `${checked} ${label}`;
+    }).join('\n');
+    return items.substring(0, 500);
+  }
+
+  return '';
+}
+
+/**
+ * Gets a summary of comments on the issue
+ * @returns {Object} Comment summary
+ */
+function getCommentsSummary() {
+  // Look for comment containers
+  const commentContainers = document.querySelectorAll(
+    '[data-testid*="comment"], .issue-comment, [id*="comment"]'
+  );
+
+  const summary = {
+    count: commentContainers.length,
+    hasComments: commentContainers.length > 0,
+    latestCommentPreview: '',
+  };
+
+  if (commentContainers.length > 0) {
+    // Get the last comment preview
+    const lastComment = commentContainers[commentContainers.length - 1];
+    const commentBody = lastComment.querySelector('[data-testid*="body"], .comment-body, p');
+    if (commentBody) {
+      const text = commentBody.textContent.trim();
+      summary.latestCommentPreview = text.length > 150 ? text.substring(0, 147) + '...' : text;
+    }
+  }
+
+  return summary;
+}
+
+/**
+ * Gets linked issues from the issue sidebar
+ * @returns {Array} Array of linked issue keys
+ */
+function getLinkedIssues() {
+  const linkedIssues = [];
+
+  // Look for linked issues section
+  const linksSection = document.querySelector(
+    '[data-testid*="links"], [data-testid*="linked-issues"], .links-section'
+  );
+
+  if (linksSection) {
+    const issueLinks = linksSection.querySelectorAll('a[href*="/browse/"]');
+    issueLinks.forEach(link => {
+      const match = link.href.match(/\/browse\/([A-Z][A-Z0-9]*-\d+)/i);
+      if (match) {
+        linkedIssues.push({
+          key: match[1].toUpperCase(),
+          title: link.textContent.trim(),
+        });
+      }
+    });
+  }
+
+  return linkedIssues.slice(0, 5); // Limit to 5
+}
+
+/**
  * Builds complete Jira issue metadata
  */
 function getJiraMetadata(element = null) {
@@ -281,6 +380,9 @@ function getJiraMetadata(element = null) {
     issueUrl,
     issueType: getIssueType(),
     priority: getIssuePriority(),
+    acceptanceCriteria: element ? '' : getAcceptanceCriteria(),
+    commentsSummary: element ? null : getCommentsSummary(),
+    linkedIssues: element ? [] : getLinkedIssues(),
   };
 }
 
@@ -823,6 +925,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           issueType: metadata.issueType,
           priority: metadata.priority,
           url: metadata.issueUrl,
+          // Enhanced context fields
+          acceptanceCriteria: metadata.acceptanceCriteria,
+          commentsSummary: metadata.commentsSummary,
+          linkedIssues: metadata.linkedIssues,
         },
       });
     } else {

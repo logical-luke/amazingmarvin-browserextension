@@ -481,3 +481,73 @@ async function init() {
 }
 
 const loopInterval = setInterval(init, 1000);
+
+/**
+ * Message listener for popup context requests
+ */
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.message === "getPageContext") {
+    // Check if we're viewing a single email
+    const mainDiv = document.querySelector('div[role="main"]');
+    if (!mainDiv) {
+      sendResponse({ context: null });
+      return true;
+    }
+
+    // Try to get email metadata from the current view
+    const emailData = getEmailMetadata(mainDiv);
+
+    if (emailData.emailSubject) {
+      // Build email URL
+      let emailUrl = window.location.href;
+      if (emailData.legacyThreadId && !emailUrl.includes(emailData.legacyThreadId)) {
+        emailUrl = window.location.href.split("#")[0] + "#inbox/" + emailData.legacyThreadId;
+      }
+
+      // Try to get email body excerpt
+      let bodyExcerpt = "";
+      const emailBody = mainDiv.querySelector('[data-message-id] .a3s, .ii.gt');
+      if (emailBody) {
+        const bodyText = emailBody.textContent.trim();
+        bodyExcerpt = bodyText.length > 300 ? bodyText.substring(0, 297) + "..." : bodyText;
+      }
+
+      // Check if this is a thread (multiple messages)
+      const messageCount = mainDiv.querySelectorAll('[data-message-id]').length;
+      const isThread = messageCount > 1;
+
+      sendResponse({
+        context: {
+          type: "gmail-email",
+          platform: "gmail",
+          subject: emailData.emailSubject,
+          senderName: emailData.senderName,
+          senderEmail: emailData.senderEmail,
+          bodyExcerpt: bodyExcerpt,
+          isThread: isThread,
+          messageCount: messageCount,
+          url: emailUrl,
+          title: emailData.emailSubject,
+        },
+      });
+    } else {
+      sendResponse({ context: null });
+    }
+    return true;
+  }
+
+  if (request.message === "getPageTitle") {
+    sendResponse({
+      title: document.title,
+      url: window.location.href,
+    });
+    return true;
+  }
+
+  if (request.message === "getSelectedText") {
+    sendResponse({
+      selectedText: window.getSelection().toString(),
+    });
+    return true;
+  }
+});

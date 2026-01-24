@@ -266,6 +266,78 @@ function getPRDescription() {
 }
 
 /**
+ * Extracts linked Jira/issue references from PR title and description
+ * Looks for patterns like PROJ-123, PROJECT-456, etc.
+ * @returns {Array} Array of linked issue references
+ */
+function extractLinkedIssues() {
+  const linkedIssues = new Set();
+
+  // Get PR title
+  const titleElement = document.querySelector(SELECTORS.prTitle) ||
+                       document.querySelector(SELECTORS.prTitleLink);
+  if (titleElement) {
+    const titleMatches = titleElement.textContent.match(/[A-Z][A-Z0-9]+-\d+/gi);
+    if (titleMatches) {
+      titleMatches.forEach(m => linkedIssues.add(m.toUpperCase()));
+    }
+  }
+
+  // Get PR description
+  const descElement = document.querySelector(SELECTORS.prDescription);
+  if (descElement) {
+    const descMatches = descElement.textContent.match(/[A-Z][A-Z0-9]+-\d+/gi);
+    if (descMatches) {
+      descMatches.forEach(m => linkedIssues.add(m.toUpperCase()));
+    }
+  }
+
+  // Also check for GitHub issue references like #123
+  const repository = getRepositoryFromUrl();
+  if (repository) {
+    // Look for issue links in the sidebar
+    const linkedIssueElements = document.querySelectorAll('[data-hovercard-type="issue"], [data-hovercard-type="pull_request"]');
+    linkedIssueElements.forEach(el => {
+      const href = el.getAttribute('href') || '';
+      const match = href.match(/\/issues\/(\d+)|\/pull\/(\d+)/);
+      if (match) {
+        const num = match[1] || match[2];
+        linkedIssues.add(`#${num}`);
+      }
+    });
+  }
+
+  return Array.from(linkedIssues).slice(0, 10); // Limit to 10
+}
+
+/**
+ * Gets a summary of review comments
+ * @returns {Object} Summary of review activity
+ */
+function getReviewCommentsSummary() {
+  const reviewComments = document.querySelectorAll(SELECTORS.reviewComment);
+  const timelineComments = document.querySelectorAll(SELECTORS.timelineComment);
+
+  const summary = {
+    reviewCommentCount: reviewComments.length,
+    timelineCommentCount: timelineComments.length,
+    hasUnresolvedThreads: false,
+    hasSuggestions: false,
+    unresolvedCount: 0,
+  };
+
+  // Check for unresolved threads
+  const unresolvedThreads = document.querySelectorAll('.js-resolvable-thread-container:not(.is-resolved)');
+  summary.hasUnresolvedThreads = unresolvedThreads.length > 0;
+  summary.unresolvedCount = unresolvedThreads.length;
+
+  // Check for suggestions
+  summary.hasSuggestions = document.querySelectorAll('.suggestion, .blob-code-suggestion').length > 0;
+
+  return summary;
+}
+
+/**
  * Gets PR metadata from the detail view
  */
 function getPRMetadataFromDetailView() {
@@ -297,6 +369,8 @@ function getPRMetadataFromDetailView() {
     reviewStatus: getReviewStatus(),
     isOwnPR,
     description: getPRDescription(),
+    linkedIssues: extractLinkedIssues(),
+    reviewSummary: getReviewCommentsSummary(),
   };
 }
 
