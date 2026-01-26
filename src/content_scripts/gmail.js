@@ -112,6 +112,49 @@ function getSenderName(email) {
 }
 
 /**
+ * Extracts the email body content from a given HTML element.
+ * Works for single email view, split pane view, and attempts to get
+ * snippet/preview for list view.
+ * @param {HTMLElement} email - DOM element containing the email
+ * @returns {string} The email body text (truncated to 1000 chars)
+ */
+function getEmailBody(email) {
+  // For single email or split pane view - look for main content area
+  // The .a3s class contains the actual email content
+  // The .ii.gt class is the message container
+
+  // Try multiple selectors as Gmail's DOM can vary
+  const bodyElement =
+    email.querySelector('.a3s.aiL') ||           // Primary email content
+    email.querySelector('.a3s') ||                // Fallback content area
+    email.querySelector('.ii.gt') ||              // Message container
+    email.querySelector('[data-message-id] .a3s'); // Message-specific
+
+  if (bodyElement) {
+    // Get text content and clean it up
+    let bodyText = bodyElement.innerText || bodyElement.textContent || '';
+    bodyText = bodyText.trim();
+
+    // Truncate if too long (1000 chars max)
+    if (bodyText.length > 1000) {
+      bodyText = bodyText.substring(0, 997) + '...';
+    }
+
+    return bodyText;
+  }
+
+  // For list view (table rows), try to get the snippet/preview
+  // Gmail shows a snippet in the list which we can capture
+  const snippetElement = email.querySelector('.y2');  // Snippet in list view
+  if (snippetElement) {
+    let snippet = snippetElement.textContent || '';
+    return snippet.trim();
+  }
+
+  return '';
+}
+
+/**
  * Extracts email metadata from a given HTML element.
  *
  * @function getEmailMetadata
@@ -123,6 +166,7 @@ function getSenderName(email) {
  * @property {string} emailSubject - Email subject.
  * @property {string} senderEmail - Sender's email address.
  * @property {string} senderName - Sender's name.
+ * @property {string} emailBody - Email body content (truncated to 1000 chars).
  */
 
 function getEmailMetadata(email) {
@@ -131,6 +175,7 @@ function getEmailMetadata(email) {
     emailSubject: getEmailSubject(email),
     senderEmail: getSenderEmail(email),
     senderName: getSenderName(email),
+    emailBody: getEmailBody(email),
   };
 }
 
@@ -166,8 +211,21 @@ async function handleMarvinButtonClick(emailData) {
     title: `[${emailData.emailSubject}](${emailUrl})`,
     done: false,
   };
-  data.note =
-    `:::info\nSender: ${emailData.senderName} <${emailData.senderEmail}>`.trim();
+
+  // Build note with email metadata (following Slack/Jira pattern)
+  let noteLines = [':::info'];
+  noteLines.push(`Sender: ${emailData.senderName} <${emailData.senderEmail}>`);
+
+  if (emailData.emailBody) {
+    noteLines.push('');
+    noteLines.push('Email Content:');
+    noteLines.push(emailData.emailBody);
+  }
+
+  noteLines.push('');
+  noteLines.push(`[View Email](${emailUrl})`);
+
+  data.note = noteLines.join('\n');
 
   if (scheduleForToday) data.day = formatDate(new Date());
 
