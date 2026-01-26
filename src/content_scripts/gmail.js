@@ -1,8 +1,83 @@
-import { getStoredGmailSettings, getStoredToken } from "../utils/storage";
+import { getStoredGmailSettings, getStoredToken, getStoredAISuggestionsSettings } from "../utils/storage";
 import { addTask } from "../utils/api";
 import { formatDate } from "../utils/dates";
 
 const logo = chrome.runtime.getURL("static/logo.png");
+
+/*
+    ***************
+    AI Suggestions
+    ***************
+*/
+
+/**
+ * Gets AI suggestions for content script button clicks
+ * @param {Object} metadata - Platform-specific metadata
+ * @param {string} action - Action type for context (reply, followup)
+ * @returns {Promise<Object|null>} AI suggestions or null
+ */
+async function getAISuggestionsForContent(metadata, action = 'reply') {
+  try {
+    const aiSettings = await getStoredAISuggestionsSettings();
+    if (!aiSettings.enabled || !aiSettings.apiKey) {
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.log('AI suggestions timed out');
+        resolve(null);
+      }, 5000); // 5 second timeout
+
+      chrome.runtime.sendMessage(
+        {
+          message: "getAISuggestions",
+          context: {
+            platform: 'gmail',
+            action,
+            metadata,
+            sourceUrl: window.location.href,
+            templateKey: `gmail-${action}`,
+          }
+        },
+        (response) => {
+          clearTimeout(timeout);
+          if (chrome.runtime.lastError) {
+            console.log('AI suggestions error:', chrome.runtime.lastError);
+            resolve(null);
+            return;
+          }
+          if (response?.success && response.suggestions) {
+            resolve(response.suggestions);
+          } else {
+            resolve(null);
+          }
+        }
+      );
+    });
+  } catch (error) {
+    console.log('AI suggestions failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Sets loading state on a button
+ * @param {HTMLElement} button - The button element
+ * @param {boolean} isLoading - Whether loading is in progress
+ */
+function setButtonLoading(button, isLoading) {
+  if (!button) return;
+  if (isLoading) {
+    button.style.opacity = '0.6';
+    button.style.cursor = 'wait';
+    button.style.pointerEvents = 'none';
+  } else {
+    button.style.opacity = '';
+    button.style.cursor = '';
+    button.style.pointerEvents = '';
+  }
+}
 
 /*
     ***************
@@ -183,7 +258,12 @@ function isNotMarvinButton(element) {
   return !element.classList.contains("marvinButton");
 }
 
-async function handleMarvinButtonClick(emailData) {
+/**
+ * Handles click on Marvin button
+ * @param {Object} emailData - Gmail email metadata
+ * @param {HTMLElement} button - The clicked button element for loading state
+ */
+async function handleMarvinButtonClick(emailData, button) {
   if (!isExtensionContextValid()) {
     changeSuccessMessageClasses("reload");
     return;
@@ -205,12 +285,36 @@ async function handleMarvinButtonClick(emailData) {
     return;
   }
 
+  // Show loading state
+  setButtonLoading(button, true);
+
+  // Try AI suggestions first
+  const aiSuggestions = await getAISuggestionsForContent(emailData, 'reply');
+
+  // Reset loading state
+  setButtonLoading(button, false);
+
   let emailUrl =
     window.location.href.split("#")[0] + "#inbox/" + emailData.legacyThreadId;
+
+  let title;
+  if (aiSuggestions?.title) {
+    // Use AI-generated title
+    title = aiSuggestions.title;
+  } else {
+    // Fall back to email subject
+    title = emailData.emailSubject;
+  }
+
   let data = {
-    title: `[${emailData.emailSubject}](${emailUrl})`,
+    title: `[${title}](${emailUrl})`,
     done: false,
   };
+
+  // Apply AI-suggested time estimate if available
+  if (aiSuggestions?.timeEstimate) {
+    data.timeEstimate = aiSuggestions.timeEstimate;
+  }
 
   // Build note with email metadata (following Slack/Jira pattern)
   let noteLines = [':::info'];
@@ -224,6 +328,13 @@ async function handleMarvinButtonClick(emailData) {
 
   noteLines.push('');
   noteLines.push(`[View Email](${emailUrl})`);
+
+  // Add AI note if provided
+  if (aiSuggestions?.note) {
+    noteLines.push('');
+    noteLines.push('AI Summary:');
+    noteLines.push(aiSuggestions.note);
+  }
 
   data.note = noteLines.join('\n');
 
@@ -253,7 +364,7 @@ function createTableMarvinButton(emailData) {
   tableMarvinButton.setAttribute("data-tooltip", "Add to Marvin");
 
   tableMarvinButton.onclick = () => {
-    handleMarvinButtonClick(emailData);
+    handleMarvinButtonClick(emailData, tableMarvinButton);
   };
 
   return tableMarvinButton;
@@ -288,7 +399,7 @@ function createSingleEmailMarvinButton(emailData) {
   };
 
   marvinButtonContainer.onclick = () => {
-    handleMarvinButtonClick(emailData);
+    handleMarvinButtonClick(emailData, marvinButtonContainer);
   };
 
   let singleMarvinButton = document.createElement("div");
