@@ -247,86 +247,99 @@ const AddTask = ({ setOnboarded }) => {
 
       const tab = tabs[0];
 
-      // Send message to content script for fresh context
+      // Try to get rich context from content script, fall back to basic tab info
+      const getContextAndRequestAI = async (pageContext) => {
+        // Get smart autocomplete settings for context creation
+        const settings = await getStoredSmartAutocompleteSettings();
+
+        let context;
+        if (pageContext) {
+          // Use rich platform-specific context
+          context = createTaskContext(tab.url, pageContext, settings);
+        } else {
+          // Build generic context from tab title/URL (works on ANY page)
+          context = {
+            platform: "generic",
+            sourceUrl: tab.url,
+            metadata: {
+              title: tab.title,
+              url: tab.url,
+            },
+          };
+        }
+
+        // Update task context state
+        setTaskContext(context);
+
+        // Now get AI suggestions
+        chrome.runtime.sendMessage(
+          { message: "getAISuggestions", context },
+          (aiResponse) => {
+            setAILoading(false);
+
+            if (chrome.runtime.lastError) {
+              setAIError("Failed to connect to AI service.");
+              return;
+            }
+
+            if (!aiResponse?.success) {
+              const reason = aiResponse?.reason || aiResponse?.error || "Unknown error";
+              if (reason === "disabled") {
+                setAIError("AI suggestions are disabled in settings.");
+              } else if (reason === "no_suggestions") {
+                setAIError("AI couldn't generate suggestions for this content.");
+              } else {
+                setAIError(`AI error: ${reason}`);
+              }
+              return;
+            }
+
+            if (aiResponse.suggestions) {
+              const aiSugg = aiResponse.suggestions;
+              setAISuggestions(aiSugg);
+
+              // Update suggested title with AI suggestion
+              if (aiSugg.title) {
+                const url = context.metadata?.url || context.metadata?.prUrl || context.sourceUrl;
+                const aiTitle = url ? `[${aiSugg.title}](${url})` : aiSugg.title;
+                setSuggestedTitle(aiTitle);
+
+                // Apply title if input is empty
+                if (!taskTitle && !localStorage.savedTitle) {
+                  setTaskTitle(aiTitle);
+                  setContextApplied(true);
+                }
+              }
+
+              // Update time estimate
+              if (aiSugg.timeEstimate) {
+                setSuggestedTimeEstimate(aiSugg.timeEstimate);
+                if (!timeEstimate) {
+                  setTimeEstimate(aiSugg.timeEstimate);
+                }
+              }
+
+              // Update labels
+              if (aiSugg.suggestedLabels?.length > 0) {
+                setSuggestedLabels(aiSugg.suggestedLabels);
+              }
+            }
+          }
+        );
+      };
+
+      // Try content script first, fall back to generic context
       chrome.tabs.sendMessage(
         tab.id,
         { message: "getPageContext" },
-        async (response) => {
-          if (chrome.runtime.lastError) {
-            // Content script not available (unsupported page)
-            setAIError("This page doesn't support AI context. Try GitHub, Jira, Slack, or Gmail.");
-            setAILoading(false);
-            return;
+        (response) => {
+          if (chrome.runtime.lastError || !response?.context) {
+            // Content script not available or no context - use generic context
+            getContextAndRequestAI(null);
+          } else {
+            // Use rich platform-specific context
+            getContextAndRequestAI(response.context);
           }
-
-          if (!response?.context) {
-            setAIError("Could not extract context from this page.");
-            setAILoading(false);
-            return;
-          }
-
-          // Get smart autocomplete settings for context creation
-          const settings = await getStoredSmartAutocompleteSettings();
-          const context = createTaskContext(tab.url, response.context, settings);
-
-          // Update task context state
-          setTaskContext(context);
-
-          // Now get AI suggestions
-          chrome.runtime.sendMessage(
-            { message: "getAISuggestions", context },
-            (aiResponse) => {
-              setAILoading(false);
-
-              if (chrome.runtime.lastError) {
-                setAIError("Failed to connect to AI service.");
-                return;
-              }
-
-              if (!aiResponse?.success) {
-                const reason = aiResponse?.reason || aiResponse?.error || "Unknown error";
-                if (reason === "disabled") {
-                  setAIError("AI suggestions are disabled in settings.");
-                } else if (reason === "no_suggestions") {
-                  setAIError("AI couldn't generate suggestions for this content.");
-                } else {
-                  setAIError(`AI error: ${reason}`);
-                }
-                return;
-              }
-
-              if (aiResponse.suggestions) {
-                const aiSugg = aiResponse.suggestions;
-                setAISuggestions(aiSugg);
-
-                // Update suggested title with AI suggestion
-                if (aiSugg.title) {
-                  const url = context.metadata?.url || context.metadata?.prUrl || context.sourceUrl;
-                  const aiTitle = url ? `[${aiSugg.title}](${url})` : aiSugg.title;
-                  setSuggestedTitle(aiTitle);
-
-                  // Apply title if input is empty
-                  if (!taskTitle && !localStorage.savedTitle) {
-                    setTaskTitle(aiTitle);
-                    setContextApplied(true);
-                  }
-                }
-
-                // Update time estimate
-                if (aiSugg.timeEstimate) {
-                  setSuggestedTimeEstimate(aiSugg.timeEstimate);
-                  if (!timeEstimate) {
-                    setTimeEstimate(aiSugg.timeEstimate);
-                  }
-                }
-
-                // Update labels
-                if (aiSugg.suggestedLabels?.length > 0) {
-                  setSuggestedLabels(aiSugg.suggestedLabels);
-                }
-              }
-            }
-          );
         }
       );
     } catch (error) {
