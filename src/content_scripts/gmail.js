@@ -489,6 +489,12 @@ function addMarvinButtonToToolbarButtons() {
     tableRows.forEach((tableRow) => {
       // Selects element containing "Archive", "Delete, "Mark as read", "Snooze", etc. buttons.
       const toolbar = tableRow.querySelector('ul[role="toolbar"]');
+
+      // Skip rows without toolbar (e.g., header rows, footer rows)
+      if (!toolbar) {
+        return;
+      }
+
       const emailData = getEmailMetadata(tableRow);
 
       let noMarvinButton = [...toolbar.childNodes].every(isNotMarvinButton);
@@ -544,6 +550,12 @@ function addMarvinButtonToSingleEmail() {
 
     // Find div element containing "Move to" and "Labels" buttons
     const insertIntoElement = buttonsContainer && buttonsContainer.childNodes[3];
+
+    // Early return if the expected button container element is not found
+    if (!insertIntoElement) {
+      return;
+    }
+
     let noMarvinButton = [...insertIntoElement.childNodes].every(
       isNotMarvinButton
     );
