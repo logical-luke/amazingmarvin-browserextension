@@ -1,7 +1,82 @@
-import { getStoredSlackSettings, getStoredToken } from "../utils/storage";
+import { getStoredSlackSettings, getStoredToken, getStoredAISuggestionsSettings } from "../utils/storage";
 import { addTask } from "../utils/api";
 import { formatDate } from "../utils/dates";
 import { TITLE_TEMPLATES } from "../utils/taskContext";
+
+/*
+    ***************
+    AI Suggestions
+    ***************
+*/
+
+/**
+ * Gets AI suggestions for content script button clicks
+ * @param {Object} metadata - Platform-specific metadata
+ * @param {string} action - Action type for context (reply, thread, dm)
+ * @returns {Promise<Object|null>} AI suggestions or null
+ */
+async function getAISuggestionsForContent(metadata, action = 'reply') {
+  try {
+    const aiSettings = await getStoredAISuggestionsSettings();
+    if (!aiSettings.enabled || !aiSettings.apiKey) {
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.log('AI suggestions timed out');
+        resolve(null);
+      }, 5000); // 5 second timeout
+
+      chrome.runtime.sendMessage(
+        {
+          message: "getAISuggestions",
+          context: {
+            platform: 'slack',
+            action,
+            metadata,
+            sourceUrl: window.location.href,
+            templateKey: `slack-${action}`,
+          }
+        },
+        (response) => {
+          clearTimeout(timeout);
+          if (chrome.runtime.lastError) {
+            console.log('AI suggestions error:', chrome.runtime.lastError);
+            resolve(null);
+            return;
+          }
+          if (response?.success && response.suggestions) {
+            resolve(response.suggestions);
+          } else {
+            resolve(null);
+          }
+        }
+      );
+    });
+  } catch (error) {
+    console.log('AI suggestions failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Sets loading state on a button
+ * @param {HTMLElement} button - The button element
+ * @param {boolean} isLoading - Whether loading is in progress
+ */
+function setButtonLoading(button, isLoading) {
+  if (!button) return;
+  if (isLoading) {
+    button.style.opacity = '0.6';
+    button.style.cursor = 'wait';
+    button.style.pointerEvents = 'none';
+  } else {
+    button.style.opacity = '';
+    button.style.cursor = '';
+    button.style.pointerEvents = '';
+  }
+}
 
 const logo = chrome.runtime.getURL("static/logo.png");
 
@@ -289,8 +364,10 @@ function isExtensionContextValid() {
 
 /**
  * Handles click on Marvin button
+ * @param {Object} metadata - Slack message metadata
+ * @param {HTMLElement} button - The clicked button element for loading state
  */
-async function handleMarvinButtonClick(metadata) {
+async function handleMarvinButtonClick(metadata, button) {
   // Check if extension context is still valid
   if (!isExtensionContextValid()) {
     showSuccessMessage("reload");
@@ -313,35 +390,58 @@ async function handleMarvinButtonClick(metadata) {
     return;
   }
 
-  // Generate smart title with action verb
-  const messagePreview =
-    metadata.messageText.length > 50
-      ? metadata.messageText.substring(0, 47) + "..."
-      : metadata.messageText;
-
-  // Determine template based on context
-  let templateKey = 'slack-reply';
+  // Determine action type for AI context
+  let action = 'reply';
+  const channelName = metadata.channelName || '';
+  const isDM = metadata.isDM || channelName.toLowerCase().includes('direct message');
   if (metadata.isThread) {
-    templateKey = 'slack-thread';
-  } else if (metadata.isDM || metadata.channelName.toLowerCase().includes('direct message')) {
-    templateKey = 'slack-dm';
+    action = 'thread';
+  } else if (isDM) {
+    action = 'dm';
   }
 
-  const template = TITLE_TEMPLATES[templateKey] || TITLE_TEMPLATES['slack-reply'];
-  const title = template
-    .replace('{channel}', metadata.channelName || '')
-    .replace('{messagePreview}', messagePreview)
-    .replace('{senderName}', metadata.senderName || '');
+  // Show loading state
+  setButtonLoading(button, true);
+
+  // Try AI suggestions first
+  const aiSuggestions = await getAISuggestionsForContent(metadata, action);
+
+  // Reset loading state
+  setButtonLoading(button, false);
+
+  let title;
+  if (aiSuggestions?.title) {
+    // Use AI-generated title
+    title = aiSuggestions.title;
+  } else {
+    // Fall back to template-based title
+    const messagePreview =
+      metadata.messageText.length > 50
+        ? metadata.messageText.substring(0, 47) + "..."
+        : metadata.messageText;
+
+    const templateKey = action === 'thread' ? 'slack-thread' : (action === 'dm' ? 'slack-dm' : 'slack-reply');
+    const template = TITLE_TEMPLATES[templateKey] || TITLE_TEMPLATES['slack-reply'];
+    title = template
+      .replace('{channel}', channelName)
+      .replace('{messagePreview}', messagePreview)
+      .replace('{senderName}', metadata.senderName || '');
+  }
 
   const data = {
     title: metadata.permalink ? `[${title}](${metadata.permalink})` : title,
     done: false,
   };
 
+  // Apply AI-suggested time estimate if available
+  if (aiSuggestions?.timeEstimate) {
+    data.timeEstimate = aiSuggestions.timeEstimate;
+  }
+
   // Build note with message metadata
   let noteLines = [":::info"];
   noteLines.push(`From: ${metadata.senderName}`);
-  noteLines.push(`Channel: ${metadata.channelName}`);
+  noteLines.push(`Channel: ${channelName}`);
   if (metadata.timestamp) {
     noteLines.push(`Time: ${metadata.timestamp}`);
   }
@@ -355,6 +455,13 @@ async function handleMarvinButtonClick(metadata) {
   if (metadata.permalink) {
     noteLines.push("");
     noteLines.push(`[View in Slack](${metadata.permalink})`);
+  }
+
+  // Add AI note if provided
+  if (aiSuggestions?.note) {
+    noteLines.push("");
+    noteLines.push("AI Summary:");
+    noteLines.push(aiSuggestions.note);
   }
 
   data.note = noteLines.join("\n");
@@ -401,7 +508,7 @@ function createMarvinButton(metadata) {
   button.onclick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    handleMarvinButtonClick(metadata);
+    handleMarvinButtonClick(metadata, button);
   };
 
   return button;

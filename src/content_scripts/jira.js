@@ -1,9 +1,84 @@
-import { getStoredJiraSettings, getStoredToken } from "../utils/storage";
+import { getStoredJiraSettings, getStoredToken, getStoredAISuggestionsSettings } from "../utils/storage";
 import { addTask } from "../utils/api";
 import { formatDate } from "../utils/dates";
 import { TITLE_TEMPLATES } from "../utils/taskContext";
 
 const logo = chrome.runtime.getURL("static/logo.png");
+
+/*
+    ***************
+    AI Suggestions
+    ***************
+*/
+
+/**
+ * Gets AI suggestions for content script button clicks
+ * @param {Object} metadata - Platform-specific metadata
+ * @param {string} action - Action type for context (task, bug, story, epic)
+ * @returns {Promise<Object|null>} AI suggestions or null
+ */
+async function getAISuggestionsForContent(metadata, action = 'task') {
+  try {
+    const aiSettings = await getStoredAISuggestionsSettings();
+    if (!aiSettings.enabled || !aiSettings.apiKey) {
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.log('AI suggestions timed out');
+        resolve(null);
+      }, 5000); // 5 second timeout
+
+      chrome.runtime.sendMessage(
+        {
+          message: "getAISuggestions",
+          context: {
+            platform: 'jira',
+            action,
+            metadata,
+            sourceUrl: window.location.href,
+            templateKey: `jira-${action}`,
+          }
+        },
+        (response) => {
+          clearTimeout(timeout);
+          if (chrome.runtime.lastError) {
+            console.log('AI suggestions error:', chrome.runtime.lastError);
+            resolve(null);
+            return;
+          }
+          if (response?.success && response.suggestions) {
+            resolve(response.suggestions);
+          } else {
+            resolve(null);
+          }
+        }
+      );
+    });
+  } catch (error) {
+    console.log('AI suggestions failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Sets loading state on a button
+ * @param {HTMLElement} button - The button element
+ * @param {boolean} isLoading - Whether loading is in progress
+ */
+function setButtonLoading(button, isLoading) {
+  if (!button) return;
+  if (isLoading) {
+    button.style.opacity = '0.6';
+    button.style.cursor = 'wait';
+    button.style.pointerEvents = 'none';
+  } else {
+    button.style.opacity = '';
+    button.style.cursor = '';
+    button.style.pointerEvents = '';
+  }
+}
 
 // Jira-specific selectors (using data-testid for stability where possible)
 const SELECTORS = {
@@ -419,8 +494,10 @@ function generateSmartTitle(metadata) {
 
 /**
  * Handles click on Marvin button
+ * @param {Object} metadata - Jira issue metadata
+ * @param {HTMLElement} button - The clicked button element for loading state
  */
-async function handleMarvinButtonClick(metadata) {
+async function handleMarvinButtonClick(metadata, button) {
   if (!isExtensionContextValid()) {
     showSuccessMessage("reload");
     return;
@@ -442,10 +519,40 @@ async function handleMarvinButtonClick(metadata) {
     return;
   }
 
+  // Determine action based on issue type
+  const issueType = (metadata.issueType || '').toLowerCase();
+  let action = 'task';
+  if (issueType.includes('bug')) action = 'bug';
+  else if (issueType.includes('story')) action = 'story';
+  else if (issueType.includes('epic')) action = 'epic';
+
+  // Show loading state
+  setButtonLoading(button, true);
+
+  // Try AI suggestions first
+  const aiSuggestions = await getAISuggestionsForContent(metadata, action);
+
+  // Reset loading state
+  setButtonLoading(button, false);
+
+  let title;
+  if (aiSuggestions?.title) {
+    // Use AI-generated title with link
+    title = `[${aiSuggestions.title}](${metadata.issueUrl})`;
+  } else {
+    // Fall back to template-based title
+    title = generateSmartTitle(metadata);
+  }
+
   const data = {
-    title: generateSmartTitle(metadata),
+    title,
     done: false,
   };
+
+  // Apply AI-suggested time estimate if available
+  if (aiSuggestions?.timeEstimate) {
+    data.timeEstimate = aiSuggestions.timeEstimate;
+  }
 
   // Build note with issue metadata
   let noteLines = [':::info'];
@@ -456,6 +563,14 @@ async function handleMarvinButtonClick(metadata) {
     noteLines.push('Description:');
     noteLines.push(metadata.description);
   }
+
+  // Add AI note if provided
+  if (aiSuggestions?.note) {
+    noteLines.push('');
+    noteLines.push('AI Summary:');
+    noteLines.push(aiSuggestions.note);
+  }
+
   data.note = noteLines.join('\n');
 
   if (scheduleForToday) {
@@ -591,7 +706,7 @@ function createMarvinButton(metadata, style = 'toolbar') {
   button.onclick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    handleMarvinButtonClick(metadata);
+    handleMarvinButtonClick(metadata, button);
   };
 
   return button;

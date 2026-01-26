@@ -1,9 +1,84 @@
-import { getStoredGitHubSettings, getStoredToken } from "../utils/storage";
+import { getStoredGitHubSettings, getStoredToken, getStoredAISuggestionsSettings } from "../utils/storage";
 import { addTask } from "../utils/api";
 import { formatDate } from "../utils/dates";
 import { TITLE_TEMPLATES } from "../utils/taskContext";
 
 const logo = chrome.runtime.getURL("static/logo.png");
+
+/*
+    ***************
+    AI Suggestions
+    ***************
+*/
+
+/**
+ * Gets AI suggestions for content script button clicks
+ * @param {Object} metadata - Platform-specific metadata
+ * @param {string} action - Action type for context (review, merge, fix-pipeline, etc.)
+ * @returns {Promise<Object|null>} AI suggestions or null
+ */
+async function getAISuggestionsForContent(metadata, action = 'pr') {
+  try {
+    const aiSettings = await getStoredAISuggestionsSettings();
+    if (!aiSettings.enabled || !aiSettings.apiKey) {
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.log('AI suggestions timed out');
+        resolve(null);
+      }, 5000); // 5 second timeout
+
+      chrome.runtime.sendMessage(
+        {
+          message: "getAISuggestions",
+          context: {
+            platform: 'github',
+            action,
+            metadata,
+            sourceUrl: window.location.href,
+            templateKey: `github-${action}`,
+          }
+        },
+        (response) => {
+          clearTimeout(timeout);
+          if (chrome.runtime.lastError) {
+            console.log('AI suggestions error:', chrome.runtime.lastError);
+            resolve(null);
+            return;
+          }
+          if (response?.success && response.suggestions) {
+            resolve(response.suggestions);
+          } else {
+            resolve(null);
+          }
+        }
+      );
+    });
+  } catch (error) {
+    console.log('AI suggestions failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Sets loading state on a button
+ * @param {HTMLElement} button - The button element
+ * @param {boolean} isLoading - Whether loading is in progress
+ */
+function setButtonLoading(button, isLoading) {
+  if (!button) return;
+  if (isLoading) {
+    button.style.opacity = '0.6';
+    button.style.cursor = 'wait';
+    button.style.pointerEvents = 'none';
+  } else {
+    button.style.opacity = '';
+    button.style.cursor = '';
+    button.style.pointerEvents = '';
+  }
+}
 
 // GitHub-specific selectors
 const SELECTORS = {
@@ -690,8 +765,10 @@ let useSmartTitles = true;
 
 /**
  * Handles click on Marvin button
+ * @param {Object} metadata - PR metadata
+ * @param {HTMLElement} button - The clicked button element for loading state
  */
-async function handleMarvinButtonClick(metadata) {
+async function handleMarvinButtonClick(metadata, button) {
   if (!isExtensionContextValid()) {
     showSuccessMessage("reload");
     return;
@@ -713,10 +790,45 @@ async function handleMarvinButtonClick(metadata) {
     return;
   }
 
+  // Determine action based on PR state
+  let action = 'pr';
+  if (!metadata.isOwnPR) {
+    action = 'review';
+  } else if (metadata.checkStatus === 'failing') {
+    action = 'fix-pipeline';
+  } else if (metadata.reviewStatus === 'changes_requested') {
+    action = 'address-review';
+  } else if (metadata.reviewStatus === 'approved') {
+    action = 'merge';
+  }
+
+  // Show loading state
+  setButtonLoading(button, true);
+
+  // Try AI suggestions first
+  const aiSuggestions = await getAISuggestionsForContent(metadata, action);
+
+  // Reset loading state
+  setButtonLoading(button, false);
+
+  let title;
+  if (aiSuggestions?.title) {
+    // Use AI-generated title with link
+    title = `[${aiSuggestions.title}](${metadata.prUrl})`;
+  } else {
+    // Fall back to template-based title
+    title = getSuggestedTitle(metadata, useSmartTitles);
+  }
+
   const data = {
-    title: getSuggestedTitle(metadata, useSmartTitles),
+    title,
     done: false,
   };
+
+  // Apply AI-suggested time estimate if available
+  if (aiSuggestions?.timeEstimate) {
+    data.timeEstimate = aiSuggestions.timeEstimate;
+  }
 
   // Build note with PR metadata
   let noteLines = [':::info'];
@@ -746,6 +858,13 @@ async function handleMarvinButtonClick(metadata) {
   noteLines.push('');
   noteLines.push(`[View on GitHub](${metadata.prUrl})`);
 
+  // Add AI note if provided
+  if (aiSuggestions?.note) {
+    noteLines.push('');
+    noteLines.push('AI Summary:');
+    noteLines.push(aiSuggestions.note);
+  }
+
   data.note = noteLines.join('\n');
 
   if (scheduleForToday) {
@@ -767,8 +886,10 @@ async function handleMarvinButtonClick(metadata) {
 
 /**
  * Handles click on Marvin button for comments
+ * @param {Object} metadata - Comment metadata
+ * @param {HTMLElement} button - The clicked button element for loading state
  */
-async function handleCommentMarvinButtonClick(metadata) {
+async function handleCommentMarvinButtonClick(metadata, button) {
   if (!isExtensionContextValid()) {
     showSuccessMessage("reload");
     return;
@@ -790,10 +911,36 @@ async function handleCommentMarvinButtonClick(metadata) {
     return;
   }
 
+  // Determine action based on comment type
+  const action = metadata.isReviewComment ? 'reply' : 'comment';
+
+  // Show loading state
+  setButtonLoading(button, true);
+
+  // Try AI suggestions first
+  const aiSuggestions = await getAISuggestionsForContent(metadata, action);
+
+  // Reset loading state
+  setButtonLoading(button, false);
+
+  let title;
+  if (aiSuggestions?.title) {
+    // Use AI-generated title with link
+    title = `[${aiSuggestions.title}](${metadata.permalink})`;
+  } else {
+    // Fall back to template-based title
+    title = getCommentSuggestedTitle(metadata, useSmartTitles);
+  }
+
   const data = {
-    title: getCommentSuggestedTitle(metadata, useSmartTitles),
+    title,
     done: false,
   };
+
+  // Apply AI-suggested time estimate if available
+  if (aiSuggestions?.timeEstimate) {
+    data.timeEstimate = aiSuggestions.timeEstimate;
+  }
 
   // Build note
   let noteLines = [':::info'];
@@ -807,6 +954,13 @@ async function handleCommentMarvinButtonClick(metadata) {
   noteLines.push(metadata.content);
   noteLines.push('');
   noteLines.push(`[View on GitHub](${metadata.permalink})`);
+
+  // Add AI note if provided
+  if (aiSuggestions?.note) {
+    noteLines.push('');
+    noteLines.push('AI Summary:');
+    noteLines.push(aiSuggestions.note);
+  }
 
   data.note = noteLines.join('\n');
 
@@ -829,8 +983,10 @@ async function handleCommentMarvinButtonClick(metadata) {
 
 /**
  * Handles click on Marvin button for notifications
+ * @param {Object} metadata - Notification metadata
+ * @param {HTMLElement} button - The clicked button element for loading state
  */
-async function handleNotificationMarvinButtonClick(metadata) {
+async function handleNotificationMarvinButtonClick(metadata, button) {
   if (!isExtensionContextValid()) {
     showSuccessMessage("reload");
     return;
@@ -852,10 +1008,40 @@ async function handleNotificationMarvinButtonClick(metadata) {
     return;
   }
 
+  // Determine action based on notification reason
+  let action = 'notification';
+  if (metadata.reason === 'review_requested') action = 'notification-review';
+  else if (metadata.reason === 'mention') action = 'notification-mention';
+  else if (metadata.reason === 'assign') action = 'notification-assign';
+  else if (metadata.reason === 'ci_activity') action = 'notification-ci';
+
+  // Show loading state
+  setButtonLoading(button, true);
+
+  // Try AI suggestions first
+  const aiSuggestions = await getAISuggestionsForContent(metadata, action);
+
+  // Reset loading state
+  setButtonLoading(button, false);
+
+  let title;
+  if (aiSuggestions?.title) {
+    // Use AI-generated title with link
+    title = `[${aiSuggestions.title}](${metadata.url})`;
+  } else {
+    // Fall back to template-based title
+    title = getNotificationSuggestedTitle(metadata, useSmartTitles);
+  }
+
   const data = {
-    title: getNotificationSuggestedTitle(metadata, useSmartTitles),
+    title,
     done: false,
   };
+
+  // Apply AI-suggested time estimate if available
+  if (aiSuggestions?.timeEstimate) {
+    data.timeEstimate = aiSuggestions.timeEstimate;
+  }
 
   // Build note
   let noteLines = [':::info'];
@@ -864,6 +1050,13 @@ async function handleNotificationMarvinButtonClick(metadata) {
   noteLines.push(`Status: ${metadata.isUnread ? 'Unread' : 'Read'}`);
   noteLines.push('');
   noteLines.push(`[View on GitHub](${metadata.url})`);
+
+  // Add AI note if provided
+  if (aiSuggestions?.note) {
+    noteLines.push('');
+    noteLines.push('AI Summary:');
+    noteLines.push(aiSuggestions.note);
+  }
 
   data.note = noteLines.join('\n');
 
@@ -955,7 +1148,7 @@ function createMarvinButton(metadata, style = 'header') {
   button.onclick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    handleMarvinButtonClick(metadata);
+    handleMarvinButtonClick(metadata, button);
   };
 
   return button;
@@ -1095,7 +1288,7 @@ function addButtonsToTimelineComments() {
     button.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      handleCommentMarvinButtonClick(metadata);
+      handleCommentMarvinButtonClick(metadata, button);
     };
 
     // Insert before the overflow menu (details element)
@@ -1168,7 +1361,7 @@ function addButtonsToReviewComments() {
     button.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      handleCommentMarvinButtonClick(metadata);
+      handleCommentMarvinButtonClick(metadata, button);
     };
 
     // Append to header
@@ -1232,7 +1425,7 @@ function addButtonsToNotifications() {
     button.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      handleNotificationMarvinButtonClick(metadata);
+      handleNotificationMarvinButtonClick(metadata, button);
     };
 
     // Insert before the title link to keep it inline
