@@ -634,6 +634,33 @@ if (document.readyState === "complete" || document.readyState === "interactive")
 }
 
 /**
+ * Gathers context from multiple recent messages
+ * @param {number} count - Number of messages to gather
+ * @returns {Array} Array of message objects with sender, text, timestamp
+ */
+function getRecentMessages(count = 5) {
+  const messages = document.querySelectorAll(SELECTORS.messageContainer);
+  const recentMessages = [];
+
+  // Get the last N messages
+  const startIndex = Math.max(0, messages.length - count);
+  for (let i = startIndex; i < messages.length; i++) {
+    const msg = messages[i];
+    const metadata = getSlackMessageMetadata(msg);
+    if (metadata && metadata.messageText) {
+      recentMessages.push({
+        sender: metadata.senderName,
+        text: metadata.messageText.substring(0, 200), // Truncate long messages
+        timestamp: metadata.timestamp,
+        isThread: metadata.isThread,
+      });
+    }
+  }
+
+  return recentMessages;
+}
+
+/**
  * Message listener for popup context requests
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -644,7 +671,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       channelName.toLowerCase().includes("direct message") ||
       channelName.match(/^[a-z]+, [a-z]+/i);
 
-    // Try to get the most recent message for context
+    // Check if we're in a thread view
+    const isInThreadView = !!document.querySelector(SELECTORS.threadView) ||
+                           !!document.querySelector(SELECTORS.threadContainer);
+
+    // Get multiple recent messages for conversation context
+    const conversationContext = getRecentMessages(5);
+
+    // Get the most recent message as the primary context
     const messages = document.querySelectorAll(SELECTORS.messageContainer);
     let messageMetadata = null;
 
@@ -654,19 +688,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       messageMetadata = getSlackMessageMetadata(lastMessage);
     }
 
+    // Build conversation summary for AI context
+    let conversationSummary = "";
+    if (conversationContext.length > 0) {
+      conversationSummary = conversationContext
+        .map(m => `${m.sender}: ${m.text}`)
+        .join("\n");
+    }
+
     sendResponse({
       context: {
         type: "slack-message",
         platform: "slack",
         channelName,
         isDM,
-        isThread: false,
+        isThread: isInThreadView || messageMetadata?.isThread || false,
         senderName: messageMetadata?.senderName,
         messageText: messageMetadata?.messageText,
         messagePreview: messageMetadata?.messageText
           ? messageMetadata.messageText.substring(0, 50)
           : "",
+        conversationContext: conversationContext,
+        conversationSummary: conversationSummary.substring(0, 1000), // Limit for API
+        messageCount: conversationContext.length,
         url: window.location.href,
+        title: `${channelName} - Slack`,
       },
     });
     return true;

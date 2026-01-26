@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { BsX, BsLightbulb } from "react-icons/bs";
+import { BsX, BsLightbulb, BsStars } from "react-icons/bs";
 import { getStoredCategories, getStoredLabels } from "../../utils/storage";
 import AutocompleteDropdown from "./AutocompleteDropdown";
 
@@ -12,6 +12,9 @@ const AddTaskTitle = ({
   onApplySuggestion,
   aiSuggestions,
   aiLoading,
+  aiError,
+  onFillWithAI,
+  onClearAIError,
 }) => {
   const inputRef = useRef(null);
 
@@ -235,16 +238,65 @@ const AddTaskTitle = ({
 
   return (
     <div>
-      <div className="flex flex-row items-center gap-0.5">
+      <div className="flex flex-row items-center gap-0.5 flex-wrap">
         <label className="label">
           <span className="label-text text-neutral">Task title</span>
         </label>
+
+        {/* Fill with AI Button - shown when not loading and no error */}
+        {onFillWithAI && !aiLoading && !aiError && (
+          <button
+            type="button"
+            className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 transition-all"
+            onClick={onFillWithAI}
+            data-hov="Generate task details using AI"
+            data-pos="T"
+          >
+            <BsStars size={12} />
+            <span>Fill with AI</span>
+          </button>
+        )}
+
+        {/* AI Loading State */}
         {aiLoading && (
-          <span className="flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500">
-            <span className="animate-pulse">Generating AI suggestion...</span>
+          <span className="flex items-center gap-1 px-2 py-0.5 text-xs text-purple-600 bg-purple-100 rounded-full">
+            <span className="animate-spin">
+              <BsStars size={12} />
+            </span>
+            <span>Generating...</span>
           </span>
         )}
-        {showSuggestionIndicator && !aiLoading && (
+
+        {/* AI Error State */}
+        {aiError && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full max-w-[200px] truncate" title={aiError}>
+              {aiError}
+            </span>
+            <button
+              type="button"
+              className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+              onClick={() => {
+                onClearAIError?.();
+                onFillWithAI?.();
+              }}
+              data-hov="Retry AI generation"
+              data-pos="T"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              className="text-gray-400 hover:text-gray-600"
+              onClick={onClearAIError}
+            >
+              <BsX size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* Show suggestion badge if AI succeeded and there's a suggestion */}
+        {showSuggestionIndicator && !aiLoading && !aiError && (
           <button
             type="button"
             className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded-full hover:opacity-90 transition-opacity ${

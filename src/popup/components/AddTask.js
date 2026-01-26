@@ -14,7 +14,7 @@ import {
   getCustomSections,
   getDefaultCustomSection,
 } from "../../utils/api";
-import { suggestLabels } from "../../utils/taskContext";
+import { suggestLabels, createTaskContext } from "../../utils/taskContext";
 
 import { BsSun, BsMoon, BsCalendarPlus, BsCalendarX } from "react-icons/bs";
 
@@ -69,6 +69,7 @@ const AddTask = ({ setOnboarded }) => {
   // AI suggestions state
   const [aiSuggestions, setAISuggestions] = useState(null);
   const [aiLoading, setAILoading] = useState(false);
+  const [aiError, setAIError] = useState(null);
 
   const logout = useCallback(() => {
     setStoredToken(null);
@@ -183,51 +184,8 @@ const AddTask = ({ setOnboarded }) => {
               }
             }
 
-            // Now try to get AI suggestions if enabled
-            const aiSettings = await getStoredAISuggestionsSettings();
-            if (aiSettings.enabled && aiSettings.apiKey) {
-              setAILoading(true);
-              chrome.runtime.sendMessage(
-                { message: "getAISuggestions", context },
-                (aiResponse) => {
-                  setAILoading(false);
-                  if (chrome.runtime.lastError) {
-                    console.log("AI suggestions not available:", chrome.runtime.lastError);
-                    return;
-                  }
-
-                  if (aiResponse?.success && aiResponse.suggestions) {
-                    const aiSugg = aiResponse.suggestions;
-                    setAISuggestions(aiSugg);
-
-                    // Override template suggestions with AI suggestions if available
-                    if (aiSugg.title) {
-                      const url = context.metadata?.url || context.metadata?.prUrl || context.sourceUrl;
-                      const aiTitle = url ? `[${aiSugg.title}](${url})` : aiSugg.title;
-                      setSuggestedTitle(aiTitle);
-
-                      // Auto-fill title if enabled and no saved title and not already applied
-                      if (settings.autoFillTitle && !localStorage.savedTitle && !contextApplied) {
-                        setTaskTitle(aiTitle);
-                        setContextApplied(true);
-                      }
-                    }
-
-                    if (aiSugg.timeEstimate) {
-                      setSuggestedTimeEstimate(aiSugg.timeEstimate);
-
-                      if (settings.autoApplyTimeEstimate && !timeEstimate) {
-                        setTimeEstimate(aiSugg.timeEstimate);
-                      }
-                    }
-
-                    if (aiSugg.suggestedLabels?.length > 0) {
-                      setSuggestedLabels(aiSugg.suggestedLabels);
-                    }
-                  }
-                }
-              );
-            }
+            // AI suggestions are now user-triggered via "Fill with AI" button
+            // instead of auto-loading here
           }
         }
       );
@@ -259,6 +217,124 @@ const AddTask = ({ setOnboarded }) => {
       }, 3000);
     }
   }, [message]);
+
+  // Handle "Fill with AI" button click - fetches fresh context and gets AI suggestions
+  const handleFillWithAI = useCallback(async () => {
+    setAILoading(true);
+    setAIError(null);
+
+    try {
+      // Check if AI is enabled and configured
+      const aiSettings = await getStoredAISuggestionsSettings();
+      if (!aiSettings.enabled) {
+        setAIError("AI suggestions are disabled. Enable in Settings > AI.");
+        setAILoading(false);
+        return;
+      }
+      if (!aiSettings.apiKey) {
+        setAIError("No API key configured. Add one in Settings > AI.");
+        setAILoading(false);
+        return;
+      }
+
+      // Get fresh context directly from the content script
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tabs[0]) {
+        setAIError("No active tab found.");
+        setAILoading(false);
+        return;
+      }
+
+      const tab = tabs[0];
+
+      // Send message to content script for fresh context
+      chrome.tabs.sendMessage(
+        tab.id,
+        { message: "getPageContext" },
+        async (response) => {
+          if (chrome.runtime.lastError) {
+            // Content script not available (unsupported page)
+            setAIError("This page doesn't support AI context. Try GitHub, Jira, Slack, or Gmail.");
+            setAILoading(false);
+            return;
+          }
+
+          if (!response?.context) {
+            setAIError("Could not extract context from this page.");
+            setAILoading(false);
+            return;
+          }
+
+          // Get smart autocomplete settings for context creation
+          const settings = await getStoredSmartAutocompleteSettings();
+          const context = createTaskContext(tab.url, response.context, settings);
+
+          // Update task context state
+          setTaskContext(context);
+
+          // Now get AI suggestions
+          chrome.runtime.sendMessage(
+            { message: "getAISuggestions", context },
+            (aiResponse) => {
+              setAILoading(false);
+
+              if (chrome.runtime.lastError) {
+                setAIError("Failed to connect to AI service.");
+                return;
+              }
+
+              if (!aiResponse?.success) {
+                const reason = aiResponse?.reason || aiResponse?.error || "Unknown error";
+                if (reason === "disabled") {
+                  setAIError("AI suggestions are disabled in settings.");
+                } else if (reason === "no_suggestions") {
+                  setAIError("AI couldn't generate suggestions for this content.");
+                } else {
+                  setAIError(`AI error: ${reason}`);
+                }
+                return;
+              }
+
+              if (aiResponse.suggestions) {
+                const aiSugg = aiResponse.suggestions;
+                setAISuggestions(aiSugg);
+
+                // Update suggested title with AI suggestion
+                if (aiSugg.title) {
+                  const url = context.metadata?.url || context.metadata?.prUrl || context.sourceUrl;
+                  const aiTitle = url ? `[${aiSugg.title}](${url})` : aiSugg.title;
+                  setSuggestedTitle(aiTitle);
+
+                  // Apply title if input is empty
+                  if (!taskTitle && !localStorage.savedTitle) {
+                    setTaskTitle(aiTitle);
+                    setContextApplied(true);
+                  }
+                }
+
+                // Update time estimate
+                if (aiSugg.timeEstimate) {
+                  setSuggestedTimeEstimate(aiSugg.timeEstimate);
+                  if (!timeEstimate) {
+                    setTimeEstimate(aiSugg.timeEstimate);
+                  }
+                }
+
+                // Update labels
+                if (aiSugg.suggestedLabels?.length > 0) {
+                  setSuggestedLabels(aiSugg.suggestedLabels);
+                }
+              }
+            }
+          );
+        }
+      );
+    } catch (error) {
+      console.error("Fill with AI error:", error);
+      setAIError("An unexpected error occurred.");
+      setAILoading(false);
+    }
+  }, [taskTitle, timeEstimate]);
 
   const resetForm = () => {
     setTaskTitle("");
@@ -567,6 +643,9 @@ const AddTask = ({ setOnboarded }) => {
             }}
             aiSuggestions={aiSuggestions}
             aiLoading={aiLoading}
+            aiError={aiError}
+            onFillWithAI={handleFillWithAI}
+            onClearAIError={() => setAIError(null)}
           />
 
           {displaySettings?.displayTaskNoteInput && (
