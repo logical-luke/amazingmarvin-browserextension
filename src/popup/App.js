@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 
-import { getStoredToken } from "../utils/storage";
+import { getStoredToken, getStoredGeneralSettings } from "../utils/storage";
 
 import OnboardingPage from "./components/OnboardingPage";
 import BottomMenu from "./components/BottomMenu";
 import TaskList from "./components/TaskList";
 import AddTask from "./components/AddTask";
+import TrackedTask from "./components/TrackedTask";
 
 let initialApiToken = null;
 try {
@@ -22,6 +23,16 @@ const App = () => {
   const [activeTab, setActiveTab] = useState("add-task");
   const [apiToken, setApiToken] = useState(initialApiToken);
   const [onboarded, setOnboarded] = useState(!!initialApiToken);
+  const [showTrackedTask, setShowTrackedTask] = useState(true);
+
+  // Load settings on mount
+  useEffect(() => {
+    getStoredGeneralSettings().then((settings) => {
+      if (settings && typeof settings.showTrackedTask === "boolean") {
+        setShowTrackedTask(settings.showTrackedTask);
+      }
+    });
+  }, []);
 
   return (
     <div className="flex flex-col w-[400px] min-h-[400px] max-h-[600px] justify-between">
@@ -29,6 +40,7 @@ const App = () => {
         <OnboardingPage setApiToken={setApiToken} setOnboarded={setOnboarded} />
       ) : (
         <>
+          {showTrackedTask && <TrackedTask />}
           {activeTab === "today" && <TaskList apiToken={apiToken} setOnboarded={setOnboarded} />}
           {activeTab === "add-task" && <AddTask setOnboarded={setOnboarded} />}
           <BottomMenu activeTab={activeTab} setActiveTab={setActiveTab} />
