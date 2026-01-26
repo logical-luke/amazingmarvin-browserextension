@@ -4,6 +4,33 @@ import { formatDate } from "../utils/dates";
 
 const logo = chrome.runtime.getURL("static/logo.png");
 
+/**
+ * Simple cache for expensive DOM queries
+ * Cache is invalidated when the main view element changes
+ */
+const selectorCache = {
+  mainDivElement: null,
+  lastUrl: null,
+
+  /**
+   * Invalidates cache if URL or main element changed
+   */
+  checkValidity() {
+    const currentUrl = window.location.href;
+    if (this.lastUrl !== currentUrl) {
+      this.clear();
+      this.lastUrl = currentUrl;
+    }
+  },
+
+  /**
+   * Clears all cached values
+   */
+  clear() {
+    this.mainDivElement = null;
+  }
+};
+
 /*
     ***************
     AI Suggestions
@@ -69,13 +96,9 @@ async function getAISuggestionsForContent(metadata, action = 'reply') {
 function setButtonLoading(button, isLoading) {
   if (!button) return;
   if (isLoading) {
-    button.style.opacity = '0.6';
-    button.style.cursor = 'wait';
-    button.style.pointerEvents = 'none';
+    button.classList.add('marvinButtonLoading');
   } else {
-    button.style.opacity = '';
-    button.style.cursor = '';
-    button.style.pointerEvents = '';
+    button.classList.remove('marvinButtonLoading');
   }
 }
 
@@ -115,6 +138,32 @@ marvinSuccessStyles.appendChild(
         border-radius: 10px;
         text-align: center;
         padding: 10px;
+    }
+
+    .marvinTableButton {
+        background-size: 20px;
+        width: 20px;
+        height: 20px;
+        margin-right: 10px;
+        margin-left: 10px;
+        border-radius: 50%;
+        background-repeat: no-repeat;
+        background-position: center center;
+    }
+
+    .marvinSingleButton {
+        background-size: 20px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background-repeat: no-repeat;
+        background-position: center center;
+    }
+
+    .marvinButtonLoading {
+        opacity: 0.6;
+        cursor: wait;
+        pointer-events: none;
     }`)
 );
 document.getElementsByTagName("head")[0].appendChild(marvinSuccessStyles);
@@ -163,6 +212,24 @@ function isExtensionContextValid() {
 function getTableRows() {
   return document.querySelectorAll('tr[role="row"]');
 }
+
+/**
+ * Debounce function to batch rapid calls
+ * @param {Function} func - Function to debounce
+ * @param {number} wait - Milliseconds to wait
+ * @returns {Function} Debounced function
+ */
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
+
+const debouncedDetermineViewAndAddButtons = debounce((displayInInbox, displayInSingleEmail) => {
+  determineViewAndAddButtons(displayInInbox, displayInSingleEmail);
+}, 250);
 
 function getLegacyThreadId(email) {
   const threadIdElements = email.querySelectorAll("[data-legacy-thread-id]");
@@ -359,8 +426,8 @@ async function handleMarvinButtonClick(emailData, button) {
 
 function createTableMarvinButton(emailData) {
   let tableMarvinButton = document.createElement("li");
-  tableMarvinButton.classList.add("bqX", "marvinButton");
-  tableMarvinButton.style.cssText = `background: url(${logo}) no-repeat center center; background-size: 20px; width: 20px; height: 20px; margin-right: 10px; margin-left: 10px; border-radius: 50%`;
+  tableMarvinButton.classList.add("bqX", "marvinButton", "marvinTableButton");
+  tableMarvinButton.style.backgroundImage = `url(${logo})`;
   tableMarvinButton.setAttribute("data-tooltip", "Add to Marvin");
 
   tableMarvinButton.onclick = () => {
@@ -403,8 +470,8 @@ function createSingleEmailMarvinButton(emailData) {
   };
 
   let singleMarvinButton = document.createElement("div");
-  singleMarvinButton.style.cssText = `background: url(${logo}) no-repeat center center; background-size: 20px; width: 20px; height: 20px; border-radius: 50%`;
-  singleMarvinButton.classList.add("ase", "T-I-J3", "J-J5-Ji");
+  singleMarvinButton.classList.add("ase", "T-I-J3", "J-J5-Ji", "marvinSingleButton");
+  singleMarvinButton.style.backgroundImage = `url(${logo})`;
 
   asaDiv.appendChild(singleMarvinButton);
 
@@ -412,25 +479,29 @@ function createSingleEmailMarvinButton(emailData) {
 }
 
 function addMarvinButtonToToolbarButtons() {
-  const tableRows = getTableRows();
+  try {
+    const tableRows = getTableRows();
 
-  if (tableRows.length === 0) {
-    return;
-  }
-
-  tableRows.forEach((tableRow) => {
-    // Selects element containing "Archive", "Delete, "Mark as read", "Snooze", etc. buttons.
-    const toolbar = tableRow.querySelector('ul[role="toolbar"]');
-    const emailData = getEmailMetadata(tableRow);
-
-    let noMarvinButton = [...toolbar.childNodes].every(isNotMarvinButton);
-
-    if (noMarvinButton) {
-      toolbar.appendChild(createTableMarvinButton(emailData));
+    if (tableRows.length === 0) {
+      return;
     }
-  });
 
-  isDoneDeterminingView = true;
+    tableRows.forEach((tableRow) => {
+      // Selects element containing "Archive", "Delete, "Mark as read", "Snooze", etc. buttons.
+      const toolbar = tableRow.querySelector('ul[role="toolbar"]');
+      const emailData = getEmailMetadata(tableRow);
+
+      let noMarvinButton = [...toolbar.childNodes].every(isNotMarvinButton);
+
+      if (noMarvinButton) {
+        toolbar.appendChild(createTableMarvinButton(emailData));
+      }
+    });
+
+    isDoneDeterminingView = true;
+  } catch (error) {
+    console.error('Marvin Gmail toolbar button error:', error);
+  }
 }
 
 /**
@@ -451,133 +522,136 @@ function checkIfButtonExists(emailId, element) {
 // - on its own (https://mail.google.com/mail/u/0/#inbox/RANDOMEMAILIDSTRING)
 // - in horizontal or vertical split pane, under or on the right side of the list of emails
 function addMarvinButtonToSingleEmail() {
-  // Element containing all buttons at the top: Back to Inbox, Archive, Report Spam, ..., More.
-  const allButtonsContainers = document.querySelectorAll(".G-tF");
-  if (allButtonsContainers.length === 0) {
-    return;
-  }
-
-  let buttonsContainer;
-
-  // Since it's possible for there to be multiple buttons containers,
-  // here we're selecting the one that is visible. The one that is visible
-  // will have offsetParent property set to a DOM element.
-  // There are some other properties on the element that is visible that are not null:
-  // offsetHeight, offsetWidth, offsetLeft, offsetTop, clientHeight and clientWidth.
-  allButtonsContainers.forEach((el) => {
-    if (el.offsetParent !== null) {
-      buttonsContainer = el;
+  try {
+    // Element containing all buttons at the top: Back to Inbox, Archive, Report Spam, ..., More.
+    const allButtonsContainers = document.querySelectorAll(".G-tF");
+    if (allButtonsContainers.length === 0) {
+      return;
     }
-  });
 
-  // Find div element containing "Move to" and "Labels" buttons
-  const insertIntoElement = buttonsContainer && buttonsContainer.childNodes[3];
-  let noMarvinButton = [...insertIntoElement.childNodes].every(
-    isNotMarvinButton
-  );
+    let buttonsContainer;
 
-  // When e-mail is displayed in split pane mode, buttonsContainer
-  // will be the same as when viewing a single email. So we have to
-  // handle the case when an email is displayed in the split pane
-  // and there's also a list of emails. In that case we have to
-  // get email metadata from the split pane.
+    // Since it's possible for there to be multiple buttons containers,
+    // here we're selecting the one that is visible. The one that is visible
+    // will have offsetParent property set to a DOM element.
+    // There are some other properties on the element that is visible that are not null:
+    // offsetHeight, offsetWidth, offsetLeft, offsetTop, clientHeight and clientWidth.
+    allButtonsContainers.forEach((el) => {
+      if (el.offsetParent !== null) {
+        buttonsContainer = el;
+      }
+    });
 
-  // When using split pane mode (vertical or horizontal split)
-  // the email in the pane will be displayed in a table whose
-  // parent is a div with a width style attribute.
-  let splitPaneEmail = [...document.querySelectorAll("table")].filter((el) => {
-    let isDiv = el.parentNode.nodeName === "DIV";
-    let hasWidthStyle = el.parentNode.getAttribute("style")?.includes("width");
-    return isDiv && hasWidthStyle;
-  })[0];
+    // Find div element containing "Move to" and "Labels" buttons
+    const insertIntoElement = buttonsContainer && buttonsContainer.childNodes[3];
+    let noMarvinButton = [...insertIntoElement.childNodes].every(
+      isNotMarvinButton
+    );
 
-  // If split pane exists, check that "No conversations selected" is not displayed
-  // by querying for data-legacy-thread-id attribute
-  let splitPaneEmailContainsEmail =
-    splitPaneEmail &&
-    splitPaneEmail.querySelectorAll("[data-legacy-thread-id]").length > 0;
+    // When e-mail is displayed in split pane mode, buttonsContainer
+    // will be the same as when viewing a single email. So we have to
+    // handle the case when an email is displayed in the split pane
+    // and there's also a list of emails. In that case we have to
+    // get email metadata from the split pane.
 
-  // If email is displayed in split pane we have to replace the Marvin button.
-  // If we don't, it will contain email metadata for the first email in displayed tab (Primary, Social, Updates, etc.)
-  if (splitPaneEmail && splitPaneEmailContainsEmail) {
-    const emailData = getEmailMetadata(splitPaneEmail);
+    // When using split pane mode (vertical or horizontal split)
+    // the email in the pane will be displayed in a table whose
+    // parent is a div with a width style attribute.
+    let splitPaneEmail = [...document.querySelectorAll("table")].filter((el) => {
+      let isDiv = el.parentNode.nodeName === "DIV";
+      let hasWidthStyle = el.parentNode.getAttribute("style")?.includes("width");
+      return isDiv && hasWidthStyle;
+    })[0];
 
-    if (!checkIfButtonExists(emailData.legacyThreadId, insertIntoElement)) {
-      let marvinButtonForReplacement =
-        insertIntoElement.querySelector(".marvinButton");
-      const newButton = createSingleEmailMarvinButton(emailData);
-      insertIntoElement.replaceChild(newButton, marvinButtonForReplacement);
+    // If split pane exists, check that "No conversations selected" is not displayed
+    // by querying for data-legacy-thread-id attribute
+    let splitPaneEmailContainsEmail =
+      splitPaneEmail &&
+      splitPaneEmail.querySelectorAll("[data-legacy-thread-id]").length > 0;
+
+    // If email is displayed in split pane we have to replace the Marvin button.
+    // If we don't, it will contain email metadata for the first email in displayed tab (Primary, Social, Updates, etc.)
+    if (splitPaneEmail && splitPaneEmailContainsEmail) {
+      const emailData = getEmailMetadata(splitPaneEmail);
+
+      if (!checkIfButtonExists(emailData.legacyThreadId, insertIntoElement)) {
+        let marvinButtonForReplacement =
+          insertIntoElement.querySelector(".marvinButton");
+        const newButton = createSingleEmailMarvinButton(emailData);
+        insertIntoElement.replaceChild(newButton, marvinButtonForReplacement);
+      }
+
+      isDoneDeterminingView = true;
+      return;
     }
+
+    // When only one email is displayed, we don't have to check
+    // if the button already exists using data-email-id attribute.
+    // It's enough to just check if the button exists.
+    if (!noMarvinButton) {
+      return;
+    }
+
+    // Get emailData and create Marvin button
+    const emailData = getEmailMetadata(
+      document.querySelector('div[role="main"]')
+    );
+    const marvinButton = createSingleEmailMarvinButton(emailData);
+
+    // Insert Marvin button into the target element
+    insertIntoElement.appendChild(marvinButton);
 
     isDoneDeterminingView = true;
-    return;
+  } catch (error) {
+    console.error('Marvin Gmail single email button error:', error);
   }
-
-  // When only one email is displayed, we don't have to check
-  // if the button already exists using data-email-id attribute.
-  // It's enough to just check if the button exists.
-  if (!noMarvinButton) {
-    return;
-  }
-
-  // Get emailData and create Marvin button
-  const emailData = getEmailMetadata(
-    document.querySelector('div[role="main"]')
-  );
-  const marvinButton = createSingleEmailMarvinButton(emailData);
-
-  // Insert Marvin button into the target element
-  insertIntoElement.appendChild(marvinButton);
-
-  isDoneDeterminingView = true;
 }
 
 async function handleMutation(mutationsList, observer) {
-  const childListMutations = mutationsList.filter(
-    (mutation) => mutation.type === "childList"
-  );
-  for (const mutation of mutationsList) {
-    // Monitor for changes made to the div we're observing (div with role set to main).
-    // For example, when the user opens an email, Gmail will keep this element
-    // in the DOM, but will remove role="main" from it and create a new div
-    // with role="main".
-    if (
-      mutation.target === mainDivElement &&
-      mutation.type === "attributes" &&
-      mutation.attributeName === "role"
-    ) {
-      const role = mainDivElement.getAttribute("role");
-      if (role !== "main") {
-        // Remove the observer from the currently monitored div element
-        observer.disconnect();
+  try {
+    for (const mutation of mutationsList) {
+      // Monitor for changes made to the div we're observing (div with role set to main).
+      // For example, when the user opens an email, Gmail will keep this element
+      // in the DOM, but will remove role="main" from it and create a new div
+      // with role="main".
+      if (
+        mutation.target === mainDivElement &&
+        mutation.type === "attributes" &&
+        mutation.attributeName === "role"
+      ) {
+        const role = mainDivElement.getAttribute("role");
+        if (role !== "main") {
+          // Remove the observer from the currently monitored div element
+          observer.disconnect();
 
-        // Re-add buttons to handle the case when single email view is displayed.
-        // When we open an email from table view, we need to display Marvin button.
-        // Just setting an observer won't work as it's possible no mutations will be
-        // made resulting in the Marvin button not getting added.
-        determineViewAndAddButtons(displayInInbox, displayInSingleEmail);
+          // Re-add buttons to handle the case when single email view is displayed.
+          // When we open an email from table view, we need to display Marvin button.
+          // Just setting an observer won't work as it's possible no mutations will be
+          // made resulting in the Marvin button not getting added.
+          debouncedDetermineViewAndAddButtons(displayInInbox, displayInSingleEmail);
 
-        // Find the new div with role="main" and start observing it
-        mainDivElement = document.querySelector('div[role="main"]');
-        const observerConfig = {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["role"],
-        };
-        observer.observe(mainDivElement, observerConfig);
+          // Find the new div with role="main" and start observing it
+          mainDivElement = document.querySelector('div[role="main"]');
+          const observerConfig = {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["role"],
+          };
+          observer.observe(mainDivElement, observerConfig);
 
-        break;
+          break;
+        }
+      }
+
+      // Debounce button rendering for childList mutations
+      if (mutation.type === "childList") {
+        debouncedDetermineViewAndAddButtons(displayInInbox, displayInSingleEmail);
+        break; // Exit early - debounce will handle batching
       }
     }
-
-    // Try to re-render buttons only for the last child list mutation.
-    if (
-      mutation.type === "childList" &&
-      mutation === childListMutations[childListMutations.length - 1]
-    ) {
-      determineViewAndAddButtons(displayInInbox, displayInSingleEmail);
-    }
+  } catch (error) {
+    console.error('Marvin Gmail mutation handler error:', error);
   }
 }
 
@@ -589,6 +663,7 @@ async function handleMutation(mutationsList, observer) {
  * @param {boolean} displayInSingleEmail - Indicates whether the Marvin button should be added to the single email.
  */
 function determineViewAndAddButtons(displayInInbox, displayInSingleEmail) {
+  selectorCache.checkValidity();
   // Initially I was scanning for divs with role="tabpanel" but it turns out that
   // there are cases when those are not displayed. Instead, div with role="grid"
   // is displayed everywhere, including lists like Starred, Snoozed, etc.
@@ -618,38 +693,75 @@ let displayInSingleEmail = false;
 let isDoneDeterminingView = false;
 
 async function init() {
-  let gmailSettings = await getStoredGmailSettings();
-  displayInInbox = gmailSettings.displayInInbox;
-  displayInSingleEmail = gmailSettings.displayInSingleEmail;
-  scheduleForToday = gmailSettings.scheduleForToday;
+  try {
+    let gmailSettings = await getStoredGmailSettings();
+    displayInInbox = gmailSettings.displayInInbox;
+    displayInSingleEmail = gmailSettings.displayInSingleEmail;
+    scheduleForToday = gmailSettings.scheduleForToday;
 
-  if (!displayInInbox && !displayInSingleEmail) {
-    clearInterval(loopInterval);
-    return;
-  }
+    if (!displayInInbox && !displayInSingleEmail) {
+      clearInterval(loopInterval);
+      return;
+    }
 
-  // Selects panels (email container lists, for example Primary, Social, Promotions, etc. )
-  // or the element containing a single email
-  mainDivElement = document.querySelector('div[role="main"]');
+    // Selects panels (email container lists, for example Primary, Social, Promotions, etc. )
+    // or the element containing a single email
+    mainDivElement = document.querySelector('div[role="main"]');
 
-  determineViewAndAddButtons(displayInInbox, displayInSingleEmail);
+    determineViewAndAddButtons(displayInInbox, displayInSingleEmail);
 
-  if (mainDivElement && isDoneDeterminingView) {
-    const observer = new MutationObserver(handleMutation);
-    const observerConfig = {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["role"],
-    };
-    observer.observe(mainDivElement, observerConfig);
+    if (mainDivElement && isDoneDeterminingView) {
+      const observer = new MutationObserver(handleMutation);
+      const observerConfig = {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["role"],
+      };
+      observer.observe(mainDivElement, observerConfig);
 
-    // Stop the loopInterval as the mutation observer is now handling the changes
-    clearInterval(loopInterval);
+      // Stop the loopInterval as the mutation observer is now handling the changes
+      clearInterval(loopInterval);
+    }
+  } catch (error) {
+    console.error('Marvin Gmail init error:', error);
+    // Don't stop the interval - Gmail might load later
   }
 }
 
-const loopInterval = setInterval(init, 1000);
+let loopInterval = null;
+let initAttempts = 0;
+const MAX_INIT_ATTEMPTS = 30; // 30 seconds max
+
+/**
+ * Start initialization with event-based approach
+ */
+function startInit() {
+  // Try immediately if DOM is ready
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    init();
+  }
+
+  // Fall back to polling with reduced frequency
+  if (!loopInterval) {
+    loopInterval = setInterval(() => {
+      initAttempts++;
+      if (initAttempts >= MAX_INIT_ATTEMPTS) {
+        clearInterval(loopInterval);
+        console.log('Marvin Gmail: Max init attempts reached');
+        return;
+      }
+      init();
+    }, 500); // 500ms instead of 1000ms for faster initial load
+  }
+}
+
+// Initialize on DOMContentLoaded or immediately if already loaded
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startInit);
+} else {
+  startInit();
+}
 
 /**
  * Message listener for popup context requests
