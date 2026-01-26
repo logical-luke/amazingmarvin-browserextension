@@ -230,3 +230,54 @@ export async function addTask(data) {
     return API_ERROR;
   }
 }
+
+// Get currently tracked task
+export async function getTrackedItem() {
+  let token = await getStoredToken().then((token) => token);
+
+  try {
+    const res = await fetch(`https://serv.amazingmarvin.com/api/trackedItem`, {
+      method: "GET",
+      headers: {
+        AMVIA: "ext",
+        ...token,
+      },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      // API returns empty object {} when no task is tracked
+      if (data && data._id) {
+        return data;
+      }
+      return null;
+    }
+
+    return null;
+  } catch (err) {
+    console.log("Error fetching tracked item:", err);
+    return null;
+  }
+}
+
+// Stop tracking a task
+export async function stopTracking(taskId) {
+  let token = await getStoredToken().then((token) => token);
+
+  try {
+    const res = await fetch(`https://serv.amazingmarvin.com/api/track`, {
+      method: "POST",
+      headers: {
+        AMVIA: "ext",
+        "Content-Type": "application/json",
+        ...token,
+      },
+      body: JSON.stringify({ taskId, action: "STOP" }),
+    });
+
+    return res.ok;
+  } catch (err) {
+    console.log("Error stopping tracking:", err);
+    return false;
+  }
+}
