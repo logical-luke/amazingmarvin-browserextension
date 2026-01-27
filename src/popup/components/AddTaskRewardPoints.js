@@ -1,3 +1,4 @@
+import React from "react";
 import { BsTrophy } from "react-icons/bs";
 
 const AddTaskRewardPoints = ({ rewardPoints, setRewardPoints }) => {
