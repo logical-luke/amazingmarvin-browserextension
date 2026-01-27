@@ -347,6 +347,81 @@ const OptionsContentGeneral = () => {
           </div>
         </div>
       </div>
+      <div className="rounded-lg bg-white shadow-lg text-sm mt-8">
+        <div className="px-6 py-8">
+          <h3 className="font-bold mb-3">Display Priority Picker</h3>
+          <div className="flex flex-row items-center justify-between w-full mt-3 mb-3">
+            <p>
+              When this setting is enabled, you can set a priority level (star)
+              for tasks using yellow, orange, or red stars.
+            </p>
+            <label className="relative inline-flex cursor-pointer ml-8">
+              <input
+                type="checkbox"
+                checked={displaySettings?.displayPriorityPicker || false}
+                onChange={() =>
+                  handleDisplaySetting(
+                    "displayPriorityPicker",
+                    !displaySettings.displayPriorityPicker
+                  )
+                }
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-1 peer-focus:ring-offset-2 peer-focus:ring-[#1CC5CB] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1CC5CB]"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div className="rounded-lg bg-white shadow-lg text-sm mt-8">
+        <div className="px-6 py-8">
+          <h3 className="font-bold mb-3">Display Frog Picker</h3>
+          <div className="flex flex-row items-center justify-between w-full mt-3 mb-3">
+            <p>
+              When this setting is enabled, you can mark tasks as "frogs" -
+              important tasks you might be avoiding.
+            </p>
+            <label className="relative inline-flex cursor-pointer ml-8">
+              <input
+                type="checkbox"
+                checked={displaySettings?.displayFrogPicker || false}
+                onChange={() =>
+                  handleDisplaySetting(
+                    "displayFrogPicker",
+                    !displaySettings.displayFrogPicker
+                  )
+                }
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-1 peer-focus:ring-offset-2 peer-focus:ring-[#1CC5CB] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1CC5CB]"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div className="rounded-lg bg-white shadow-lg text-sm mt-8">
+        <div className="px-6 py-8">
+          <h3 className="font-bold mb-3">Display Reward Points Input</h3>
+          <div className="flex flex-row items-center justify-between w-full mt-3 mb-3">
+            <p>
+              When this setting is enabled, you can assign reward points to
+              tasks for gamification.
+            </p>
+            <label className="relative inline-flex cursor-pointer ml-8">
+              <input
+                type="checkbox"
+                checked={displaySettings?.displayRewardPointsInput || false}
+                onChange={() =>
+                  handleDisplaySetting(
+                    "displayRewardPointsInput",
+                    !displaySettings.displayRewardPointsInput
+                  )
+                }
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-1 peer-focus:ring-offset-2 peer-focus:ring-[#1CC5CB] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1CC5CB]"></div>
+            </label>
+          </div>
+        </div>
+      </div>
       <div className="rounded-lg bg-white shadow-lg text-sm mt-8 mb-8">
         <div className="px-6 py-8">
           <h3 className="font-bold mb-3">Display Currently Tracked Task</h3>
