@@ -1,78 +1,84 @@
-<h1 align="center" id="readme-top"> Amazing Marvin - Browser Extension </h1> <br>
-<p align="center">
-  <a href="https://amazingmarvin.com/">
-    <img alt="Amazing Marvin Logo" title="Amazing Marvin" src="README/MarvinLogoSquare.png" width="250">
-  </a>
-</p>
+# Amazing Marvin - Browser Extension (Fork)
 
-<p align="center">
-  Add to
-  <a href="https://chrome.google.com/webstore/detail/amazing-marvin/gjohmhcpmpjfnkipjjcgmiklimmjfhlp">Chrome/Edge</a>,
-  <a href="https://addons.mozilla.org/en-US/firefox/addon/amazing-marvin/">Firefox</a>,
-  Safari (soon!)
-</p>
+> **Note:** This is a fork of the [official Amazing Marvin browser extension](https://github.com/amazingmarvin/amazingmarvin-browserextension) with additional platform integrations and AI-powered features.
 
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li><a href="#demo">Demo</a></li>
-    <li><a href="#about-the-project">About the Project</a></li>
-    <li><a href="#features">Features</a></li>
-    <li><a href="#built-with">Built with</a></li>
-    <li><a href="#installation">Installation</a></li>
-  </ol>
-</details>
+Add to [Chrome/Edge](https://chrome.google.com/webstore/detail/amazing-marvin/gjohmhcpmpjfnkipjjcgmiklimmjfhlp), [Firefox](https://addons.mozilla.org/en-US/firefox/addon/amazing-marvin/), Safari (soon!)
 
-## Demo
+## Table of Contents
 
-Watch a short video on youtube here:
-
-[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/Bmy3IIj8ur0/0.jpg)](https://www.youtube.com/watch?v=Bmy3IIj8ur0)
+- [About the Project](#about-the-project)
+- [Fork Enhancements](#fork-enhancements)
+- [Features](#features)
+- [Built with](#built-with)
+- [Installation](#installation)
+- [Roadmap](#roadmap)
 
 ## About the Project
 
-<p align="center">
-  <a href="https://amazingmarvin.com/">
-    <img alt="Amazing Marvin Logo" title="Amazing Marvin Browser Extension" src="README/main.png" width="1920">
-  </a>
-</p>
-
-This browser extension was built with the intention to help you quickly add tasks to your Marvin account
-without having to open the app. Besides being able to add new tasks to Marvin, it also allows you to:
+This browser extension helps you quickly add tasks to your Marvin account without having to open the app. Besides being able to add new tasks to Marvin, it also allows you to:
 
 * See your daily list of tasks
-* Add emails to Marvin from gmail
+* Add emails to Marvin from Gmail
 * Add snippets of selected text to Marvin in just two clicks
+* See your currently tracked task in the popup
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+## Fork Enhancements
 
-### Features
+This fork adds significant new capabilities beyond the original extension:
 
-This section shows lists of features that are currently implemented in the extension.
+### Platform Integrations
 
-* Badge with the number of tasks for today
+**Jira Cloud Integration**
+- "Add to Marvin" button appears on issue detail views, board cards, and backlog lists
+- Smart title generation based on issue type (Task, Bug, Story, Epic)
+- Automatically extracts issue metadata including key, summary, description, type, and priority
 
-![Badge](README/badge.png)
+**Slack Integration**
+- Native-style button integrated into Slack's message actions toolbar
+- Works in channels, direct messages, and threads
+- Captures message content, sender, channel name, and timestamp
 
-* Gmail Addon - lets you add emails to Marvin, both from the list of emails and from the single email view. When the
-  task is created, a message is displayed at the bottom to let you know that the task was created.
+**GitHub Integration**
+- Buttons on PR detail pages, PR lists, timeline comments, review comments, and notifications
+- Context-aware smart titles (Review PR, Merge PR, Fix Pipeline, Address Review Comments)
+- Automatically detects your PRs vs. others and check/review status
+- Extracts linked Jira issues from PR titles and descriptions
 
-![Gmail](README/gmail.png)
+### AI-Powered Features
 
-* Context menu buttons - Creates a new task in Marvin where:
-    * The title is a hyperlink containing the page title and the URL of the page where the text was selected
-    * The note is the selected text
+**Smart Task Suggestions**
+- Multi-provider support: Claude (Anthropic), OpenAI (GPT), and Google Gemini
+- Generates intelligent task titles based on page context
+- Suggests time estimates for tasks
+- Provides AI summaries in task notes
 
-![Context Menu](README/context-menu.png)
+**Context-Aware Autocomplete**
+- Gathers context from the current page (Jira, Slack, GitHub, Gmail)
+- Platform-specific title templates for natural task names
 
-* Extension also comes with a dedicated options page where users can configure the following:
-    * Which buttons/inputs are visible in the Add Task view
-    * Add/Change their API token
-    * Force sync categories and labels
-    * Where "Add to Marvin" button will be displayed in Gmail UI and whether the task will get scheduled for today
+### Enhanced Add Task Form
 
-![Options](README/settings.png)
+- Priority picker (yellow, orange, red stars)
+- Frog status picker (normal, baby, monster frogs)
+- Reward points configuration
+- Currently tracked task display in popup header
+
+## Features
+
+This section lists features available in the extension:
+
+* **Badge with task count** - Shows the number of tasks scheduled for today
+* **Gmail Addon** - Add emails to Marvin from both the email list and single email views. A confirmation message appears when tasks are created.
+* **Context menu buttons** - Right-click to create a task with:
+  * Title as a hyperlink containing the page title and URL
+  * Selected text added to the task note
+* **Options page** - Configure:
+  * Which buttons/inputs are visible in the Add Task view
+  * API token management
+  * Force sync categories and labels
+  * Where "Add to Marvin" buttons appear in Gmail, Jira, Slack, and GitHub
+  * AI suggestions provider and API key
+  * Smart autocomplete settings
 
 ## Built with
 
@@ -84,20 +90,18 @@ Extension is built using:
 * [React DayPicker](https://react-day-picker.js.org/) for the date picker
 * [React Icons](https://react-icons.github.io/react-icons/) for icons
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 ## Installation
 
 ### Building the extension
 
-To start editing or using the exstension, you'll first need to clone the repo
+To start editing or using the extension, you'll first need to clone the repo
 and install the dependencies. After that you'll need to build it and then load
 it in your browser. Building requires `node` (tested with v14 and higher), and
 `npm`.
 
 1. Clone the repo
    ```sh
-   gh repo clone amazingmarvin/amazingmarvin-browserextension
+   gh repo clone logical-luke/amazingmarvin-browserextension
    ```
 2. Install NPM packages
    ```sh
@@ -105,13 +109,13 @@ it in your browser. Building requires `node` (tested with v14 and higher), and
    ```
 3. Run build script
    ```sh
-    npm run build
-    ```
-4. Build for firefox
+   npm run build
+   ```
+4. Build for Firefox
    ```sh
-    npm run ff:build
-    ```
-5. Build and watch source (for hacking)
+   npm run ff:build
+   ```
+5. Build and watch source (for development)
    ```sh
    npm run start
    ```
@@ -121,22 +125,24 @@ it in your browser. Building requires `node` (tested with v14 and higher), and
 To load the extension, go to the extensions page in your browser. For Chrome,
 you can go to `chrome://extensions/` and for Edge, you can go to
 `edge://extensions/`. Once you're there, click on the "Load unpacked" button
-and select the `dist/dev` folder from the project. If you don't see the "Load
+and select the `out/dev` folder from the project. If you don't see the "Load
 unpacked" button, be sure to toggle "Developer mode".
 
 In Firefox, open `about:debugging#/runtime/this-firefox` and click "Load
-Temporary Add-On..." and select the `dist_ff` folder from the project.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- ROADMAP -->
+Temporary Add-On..." and select the `out/ff` folder from the project.
 
 ## Roadmap
 
-- [ ] Optimize content script code
-- [x] Add support for Firefox
-- [ ] Display currently tracked task in the popup
-- [ ] Add priorities and other task fields
-- [ ] Autocomplete categories, labels, and others while inputting tasks
+Completed enhancements in this fork:
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+- [x] Optimize content script code
+- [x] Add support for Firefox
+- [x] Display currently tracked task in the popup
+- [x] Add priorities, frog status, and reward points to Add Task form
+- [x] Autocomplete categories, labels, and others while inputting tasks
+- [x] AI-powered task suggestions with multi-provider support
+- [x] Jira Cloud integration
+- [x] Slack integration
+- [x] GitHub integration (PRs, issues, comments, notifications)
+
+See the [open issues](https://github.com/logical-luke/amazingmarvin-browserextension/issues) for a list of proposed features and known issues.
