@@ -26,6 +26,9 @@ import AddTaskNote from "./AddTaskNote";
 import AddTaskParent from "./AddTaskParent";
 import AddTaskParentPicker from "./AddTaskParentPicker";
 import AddTaskLabels from "./AddTaskLabels";
+import AddTaskPriority from "./AddTaskPriority";
+import AddTaskFrog from "./AddTaskFrog";
+import AddTaskRewardPoints from "./AddTaskRewardPoints";
 import MarvinButton from "../../components/MarvinButton";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
@@ -55,6 +58,9 @@ const AddTask = ({ setOnboarded }) => {
   const [parent, setParent] = useState({ title: "Inbox", _id: "" });
   const [parentPickerVisible, setParentPickerVisible] = useState(false);
   const [labels, setLabels] = useState([]);
+  const [priority, setPriority] = useState(null);
+  const [frogLevel, setFrogLevel] = useState(null);
+  const [rewardPoints, setRewardPoints] = useState(null);
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -366,6 +372,9 @@ const AddTask = ({ setOnboarded }) => {
     setParent({ title: "Inbox", _id: "" });
     setParentPickerVisible(false);
     setLabels([]);
+    setPriority(null);
+    setFrogLevel(null);
+    setRewardPoints(null);
   };
 
   const handleAddTask = useCallback(() => {
@@ -424,6 +433,18 @@ const AddTask = ({ setOnboarded }) => {
       data.labelIds = labels.map((label) => label._id);
     }
 
+    if (priority) {
+      data.isStarred = priority;
+    }
+
+    if (frogLevel) {
+      data.isFrogged = frogLevel;
+    }
+
+    if (rewardPoints) {
+      data.rewardPoints = rewardPoints;
+    }
+
     data.title = data.title + " " + shortcuts.join(" ");
     data.title = data.title.trim();
 
@@ -451,6 +472,9 @@ const AddTask = ({ setOnboarded }) => {
     labels,
     parent,
     timeEstimate,
+    priority,
+    frogLevel,
+    rewardPoints,
   ]);
 
   const scheduleDateButtons = [
@@ -707,6 +731,27 @@ const AddTask = ({ setOnboarded }) => {
               setLabels={setLabels}
               suggestedLabels={suggestedLabels}
               taskContext={taskContext}
+            />
+          )}
+
+          {displaySettings?.displayPriorityPicker && (
+            <AddTaskPriority
+              priority={priority}
+              setPriority={setPriority}
+            />
+          )}
+
+          {displaySettings?.displayFrogPicker && (
+            <AddTaskFrog
+              frogLevel={frogLevel}
+              setFrogLevel={setFrogLevel}
+            />
+          )}
+
+          {displaySettings?.displayRewardPointsInput && (
+            <AddTaskRewardPoints
+              rewardPoints={rewardPoints}
+              setRewardPoints={setRewardPoints}
             />
           )}
         </div>
