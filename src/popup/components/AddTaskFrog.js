@@ -1,3 +1,5 @@
+import React from "react";
+
 const AddTaskFrog = ({ frogLevel, setFrogLevel }) => {
   const frogLevels = [
     { value: 1, label: "Frog", emoji: "\uD83D\uDC38", size: "text-base", description: "Mark as a frog task" },
